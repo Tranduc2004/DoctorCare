@@ -18,3 +18,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 __exportStar(require("./appointmentController"), exports);
 __exportStar(require("./userController"), exports);
 __exportStar(require("./authController"), exports);
+__exportStar(require("./scheduleController"), exports);
+__exportStar(require("./serviceController"), exports);
+__exportStar(require("./specialtyController"), exports);

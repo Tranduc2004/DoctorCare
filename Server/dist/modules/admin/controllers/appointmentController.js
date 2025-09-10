@@ -25,11 +25,9 @@ const getAllAppointments = (req, res, next) => __awaiter(void 0, void 0, void 0,
             .sort({ createdAt: -1 })
             .lean();
         res.json(appointments);
-        return;
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi lấy danh sách lịch hẹn", error });
-        return;
     }
 });
 exports.getAllAppointments = getAllAppointments;
@@ -44,11 +42,9 @@ const updateAppointmentStatus = (req, res, next) => __awaiter(void 0, void 0, vo
             return;
         }
         res.json(appointment);
-        return;
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi cập nhật lịch hẹn", error });
-        return;
     }
 });
 exports.updateAppointmentStatus = updateAppointmentStatus;
@@ -68,11 +64,9 @@ const deleteAppointment = (req, res, next) => __awaiter(void 0, void 0, void 0, 
             });
         }
         res.json({ message: "Xóa lịch hẹn thành công" });
-        return;
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi xóa lịch hẹn", error });
-        return;
     }
 });
 exports.deleteAppointment = deleteAppointment;
@@ -91,11 +85,9 @@ const getAppointmentStats = (req, res, next) => __awaiter(void 0, void 0, void 0
             completed,
             cancelled,
         });
-        return;
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi lấy thống kê", error });
-        return;
     }
 });
 exports.getAppointmentStats = getAppointmentStats;

@@ -70,6 +70,33 @@ export const getPatientAppointments = async (
   }
 };
 
+// Patient: Lấy lịch sử lịch hẹn (đã hoàn thành hoặc đã hủy)
+export const getAppointmentHistory = async (
+  req: Request,
+  res: Response
+): Promise<void> => {
+  try {
+    const { patientId } = req.query as { patientId?: string };
+    if (!patientId) {
+      res.status(400).json({ message: "Thiếu patientId" });
+      return;
+    }
+
+    const list = await Appointment.find({
+      patientId,
+      status: { $in: ["done", "cancelled"] as AppointmentStatus[] },
+    })
+      .populate("doctorId", "name specialty workplace")
+      .populate("scheduleId")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    res.json(list);
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi lấy lịch sử lịch hẹn", error });
+  }
+};
+
 // Patient: Hủy lịch hẹn
 export const cancelAppointment = async (
   req: Request,

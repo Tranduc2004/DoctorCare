@@ -17,6 +17,8 @@ export interface IPatient extends Document {
   medicalHistory?: string[];
   allergies?: string[];
   avatar?: string;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -40,6 +42,8 @@ const PatientSchema: Schema = new Schema(
     medicalHistory: [{ type: String }],
     allergies: [{ type: String }],
     avatar: { type: String },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
   },
   {
     timestamps: true,

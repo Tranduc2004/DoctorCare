@@ -1,7 +1,15 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import Sidebar from "./Sidebar";
 import { Bell, Menu, Search } from "lucide-react";
+import { specialtyApi } from "../../api/specialtyApi";
+
+interface Specialty {
+  _id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+}
 
 interface DoctorLayoutProps {
   children: React.ReactNode;
@@ -9,7 +17,28 @@ interface DoctorLayoutProps {
 
 const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const { user } = useAuth();
+
+  // Fetch specialties to get specialty names
+  useEffect(() => {
+    const loadSpecialties = async () => {
+      try {
+        const data = await specialtyApi.getActiveSpecialties();
+        setSpecialties(data || []);
+      } catch (error) {
+        console.error("Error loading specialties:", error);
+      }
+    };
+    loadSpecialties();
+  }, []);
+
+  // Get specialty name by ID
+  const getSpecialtyName = (specialtyId: string) => {
+    if (!specialtyId) return "Bác sĩ";
+    const specialty = specialties.find((s) => s._id === specialtyId);
+    return specialty ? specialty.name : "Bác sĩ";
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -48,17 +77,25 @@ const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
               </button>
 
               <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-gradient-to-r from-blue-500 to-teal-500 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-semibold">
-                    {user?.name?.[0] || "B"}
-                  </span>
-                </div>
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user?.name}
+                    className="h-8 w-8 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="h-8 w-8 bg-gradient-to-r from-blue-500 to-teal-500 rounded-full flex items-center justify-center">
+                    <span className="text-white text-sm font-semibold">
+                      {user?.name?.[0] || "B"}
+                    </span>
+                  </div>
+                )}
                 <div className="text-left">
                   <p className="text-sm font-medium text-gray-900">
                     BS. {user?.name}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {user?.specialty || "Bác sĩ"}
+                    {getSpecialtyName(user?.specialty || "")}
                   </p>
                 </div>
               </div>

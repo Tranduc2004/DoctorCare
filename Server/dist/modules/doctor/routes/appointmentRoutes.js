@@ -7,5 +7,5 @@ const router = (0, express_1.Router)();
 router.get("/", controllers_1.getDoctorAppointments);
 router.get("/by-date", controllers_1.getAppointmentsByDate);
 router.get("/stats", controllers_1.getAppointmentStats);
-router.put("/status/:id", controllers_1.updateAppointmentStatus);
+router.put("/:id/status", controllers_1.updateAppointmentStatus);
 exports.default = router;

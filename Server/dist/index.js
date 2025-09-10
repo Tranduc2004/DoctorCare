@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
@@ -12,6 +21,7 @@ const path_1 = __importDefault(require("path"));
 const routes_1 = __importDefault(require("./modules/admin/routes"));
 const routes_2 = __importDefault(require("./modules/patient/routes"));
 const routes_3 = __importDefault(require("./modules/doctor/routes"));
+const routes_4 = require("./modules/shared/routes");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = process.env.PORT || 5000;
@@ -25,6 +35,9 @@ app.use("/uploads", express_1.default.static(path_1.default.join(__dirname, "../
 app.use("/api/admin", routes_1.default);
 app.use("/api/patient", routes_2.default);
 app.use("/api/doctor", routes_3.default);
+// Shared routes (công khai)
+app.use("/api/specialties", routes_4.specialtyRoutes);
+app.use("/api/auth", routes_4.authRoutes);
 // Health check
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
@@ -40,16 +53,14 @@ app.use("*", (req, res) => {
 });
 mongoose_1.default
     .connect(process.env.MONGO_URI)
-    .then(() => {
+    .then(() => __awaiter(void 0, void 0, void 0, function* () {
     console.log("Kết nối MongoDB thành công!");
     app.listen(PORT, () => {
         console.log(`Server đang chạy tại http://localhost:${PORT}`);
-        console.log(`Admin API: http://localhost:${PORT}/api/admin`);
-        console.log(`Patient API: http://localhost:${PORT}/api/patient`);
-        console.log(`Doctor API: http://localhost:${PORT}/api/doctor`);
         console.log(`Admin Auth: http://localhost:${PORT}/api/admin/auth`);
         console.log(`Patient Auth: http://localhost:${PORT}/api/patient/auth`);
         console.log(`Doctor Auth: http://localhost:${PORT}/api/doctor/auth`);
+        console.log(`Shared Auth: http://localhost:${PORT}/api/auth`);
     });
-})
+}))
     .catch((err) => console.error("Lỗi kết nối MongoDB:", err));

@@ -28,6 +28,8 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     { icon: Users, label: "Bệnh nhân", path: "/patients" },
     { icon: Calendar, label: "Lịch làm việc", path: "/doctor-schedule" },
     { icon: UserCheck, label: "Bác sĩ", path: "/doctors" },
+    { icon: Calendar, label: "Chuyên khoa", path: "/specialties" },
+    { icon: UserCheck, label: "Dịch vụ", path: "/services" },
     { icon: Calendar, label: "Lịch hẹn", path: "/appointments" },
     { icon: BarChart3, label: "Thống kê", path: "/statistics" },
     { icon: Settings, label: "Cài đặt", path: "/settings" },

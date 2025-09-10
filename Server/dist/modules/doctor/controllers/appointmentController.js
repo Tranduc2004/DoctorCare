@@ -14,19 +14,45 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAppointmentStats = exports.getAppointmentsByDate = exports.updateAppointmentStatus = exports.getDoctorAppointments = void 0;
 const Appointment_1 = __importDefault(require("../../patient/models/Appointment"));
+console.log("Appointment model imported successfully");
 // Doctor: Lấy lịch hẹn của bác sĩ
 const getDoctorAppointments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { doctorId } = req.query;
+        if (!doctorId) {
+            res.status(400).json({ message: "Thiếu doctorId" });
+            return;
+        }
+        console.log("Fetching appointments for doctorId:", doctorId);
+        // Check if there are any appointments at all
+        const allAppointments = yield Appointment_1.default.find({}).lean();
+        console.log("Total appointments in database:", allAppointments.length);
+        // First, try without populate to see if basic query works
+        const basicList = yield Appointment_1.default.find({ doctorId }).lean();
+        console.log("Basic appointments found for doctorId:", basicList.length);
+        // Then try with populate
         const list = yield Appointment_1.default.find({ doctorId })
-            .populate("patientId", "name email phone")
-            .populate("scheduleId")
+            .populate({
+            path: "patientId",
+            select: "name email phone",
+            model: "Patient",
+        })
+            .populate({
+            path: "scheduleId",
+            model: "DoctorSchedule",
+        })
             .sort({ createdAt: -1 })
             .lean();
+        console.log("Found appointments with populate:", list.length);
+        // Return the populated data
         res.json(list);
     }
     catch (error) {
-        res.status(500).json({ message: "Lỗi lấy lịch hẹn của bác sĩ", error });
+        console.error("Error in getDoctorAppointments:", error);
+        res.status(500).json({
+            message: "Lỗi lấy lịch hẹn của bác sĩ",
+            error: error instanceof Error ? error.message : String(error),
+        });
     }
 });
 exports.getDoctorAppointments = getDoctorAppointments;
@@ -38,6 +64,24 @@ const updateAppointmentStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
         const appointment = yield Appointment_1.default.findOne({ _id: id, doctorId });
         if (!appointment) {
             res.status(404).json({ message: "Không tìm thấy lịch hẹn" });
+            return;
+        }
+        // Validate status transition
+        const validTransitions = {
+            pending: ["confirmed", "cancelled"],
+            confirmed: ["examining", "cancelled"],
+            examining: ["prescribing", "cancelled"],
+            prescribing: ["done", "cancelled"],
+            done: [],
+            cancelled: [],
+        };
+        const currentStatus = appointment.status;
+        const allowedNextStatuses = validTransitions[currentStatus];
+        if (!allowedNextStatuses.includes(status)) {
+            res.status(400).json({
+                message: `Không thể chuyển từ trạng thái ${currentStatus} sang ${status}`,
+                allowedTransitions: allowedNextStatuses,
+            });
             return;
         }
         appointment.status = status;
@@ -96,6 +140,14 @@ const getAppointmentStats = (req, res) => __awaiter(void 0, void 0, void 0, func
             doctorId,
             status: "confirmed",
         });
+        const examining = yield Appointment_1.default.countDocuments({
+            doctorId,
+            status: "examining",
+        });
+        const prescribing = yield Appointment_1.default.countDocuments({
+            doctorId,
+            status: "prescribing",
+        });
         const completed = yield Appointment_1.default.countDocuments({
             doctorId,
             status: "done",
@@ -108,6 +160,8 @@ const getAppointmentStats = (req, res) => __awaiter(void 0, void 0, void 0, func
             total,
             pending,
             confirmed,
+            examining,
+            prescribing,
             completed,
             cancelled,
         });

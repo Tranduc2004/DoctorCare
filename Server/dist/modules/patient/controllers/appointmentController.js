@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateSymptoms = exports.cancelAppointment = exports.getPatientAppointments = exports.createAppointment = void 0;
+exports.updateSymptoms = exports.cancelAppointment = exports.getAppointmentHistory = exports.getPatientAppointments = exports.createAppointment = void 0;
 const Appointment_1 = __importDefault(require("../models/Appointment"));
 const DoctorSchedule_1 = __importDefault(require("../../doctor/models/DoctorSchedule"));
 // Patient: Tạo lịch hẹn mới
@@ -65,6 +65,29 @@ const getPatientAppointments = (req, res) => __awaiter(void 0, void 0, void 0, f
     }
 });
 exports.getPatientAppointments = getPatientAppointments;
+// Patient: Lấy lịch sử lịch hẹn (đã hoàn thành hoặc đã hủy)
+const getAppointmentHistory = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { patientId } = req.query;
+        if (!patientId) {
+            res.status(400).json({ message: "Thiếu patientId" });
+            return;
+        }
+        const list = yield Appointment_1.default.find({
+            patientId,
+            status: { $in: ["done", "cancelled"] },
+        })
+            .populate("doctorId", "name specialty workplace")
+            .populate("scheduleId")
+            .sort({ updatedAt: -1 })
+            .lean();
+        res.json(list);
+    }
+    catch (error) {
+        res.status(500).json({ message: "Lỗi lấy lịch sử lịch hẹn", error });
+    }
+});
+exports.getAppointmentHistory = getAppointmentHistory;
 // Patient: Hủy lịch hẹn
 const cancelAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {

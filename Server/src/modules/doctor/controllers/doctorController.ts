@@ -11,11 +11,14 @@ export const getDoctorsBySpecialty = async (
 
     let query = {};
     if (specialty) {
+      // Tìm kiếm theo ID chuyên khoa (vì trong model Doctor, specialty lưu ID)
       query = { specialty: specialty };
     }
 
     const doctors = await Doctor.find(query)
-      .select("_id name specialty workplace experience")
+      .select(
+        "_id name specialty workplace experience email phone description consultationFee avatar"
+      )
       .sort({ name: 1 })
       .lean();
 
@@ -53,7 +56,7 @@ export const getAllDoctors = async (
 ): Promise<void> => {
   try {
     const doctors = await Doctor.find()
-      .select("_id name email specialty workplace experience license")
+      .select("_id name email specialty workplace experience license avatar")
       .sort({ name: 1 })
       .lean();
 

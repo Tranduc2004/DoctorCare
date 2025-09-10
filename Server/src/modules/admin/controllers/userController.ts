@@ -48,6 +48,7 @@ export const getUsersByRole: RequestHandler = async (
       if (status) filter.status = status;
       const doctors = await Doctor.find(filter)
         .select("-password")
+        .populate("specialty", "name")
         .sort({ createdAt: -1 })
         .lean();
       res.json(doctors.map((d: any) => ({ ...d, role: "doctor" })));

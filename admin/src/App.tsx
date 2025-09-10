@@ -13,6 +13,9 @@ import Doctors from "./pages/doctors/Doctors";
 import AdminLayout from "./components/layout/AdminLayout";
 import UserDetail from "./pages/users/UserDetail";
 import DoctorSchedule from "./pages/schedules/DoctorSchedule";
+import Specialties from "./pages/specialties/Specialties";
+import Services from "./pages/services/Services";
+import AdminAppointmentsPage from "./pages/appointments/Appointments";
 import "./App.css";
 
 // Protected Route Component
@@ -107,6 +110,36 @@ function App() {
                 <ProtectedRoute>
                   <AdminLayout>
                     <DoctorSchedule />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/specialties"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <Specialties />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/appointments"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <AdminAppointmentsPage />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/services"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <Services />
                   </AdminLayout>
                 </ProtectedRoute>
               }

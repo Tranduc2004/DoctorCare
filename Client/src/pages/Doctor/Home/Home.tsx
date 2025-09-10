@@ -10,10 +10,39 @@ import {
 } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { specialtyApi } from "../../../api/specialtyApi";
+
+interface Specialty {
+  _id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+}
 
 const DoctorDashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
+
+  // Fetch specialties to get specialty names
+  useEffect(() => {
+    const loadSpecialties = async () => {
+      try {
+        const data = await specialtyApi.getActiveSpecialties();
+        setSpecialties(data || []);
+      } catch (error) {
+        console.error("Error loading specialties:", error);
+      }
+    };
+    loadSpecialties();
+  }, []);
+
+  // Get specialty name by ID
+  const getSpecialtyName = (specialtyId: string) => {
+    const specialty = specialties.find((s) => s._id === specialtyId);
+    return specialty ? specialty.name : "Không xác định";
+  };
 
   const stats = [
     {
@@ -105,29 +134,42 @@ const DoctorDashboard: React.FC = () => {
     <div className="p-8">
       {/* Welcome Section */}
       <div className="mb-8">
-        <div className="bg-gradient-to-r from-blue-600 to-teal-500 rounded-2xl p-8 text-white relative overflow-hidden">
-          <div className="relative z-10">
-            <h2 className="text-3xl font-bold mb-2">
-              Chào mừng trở lại, BS. {user?.name}
-            </h2>
-            <p className="text-blue-100 mb-6">
-              Hôm nay bạn có 24 bệnh nhân cần khám. Hãy bắt đầu ngày làm việc
-              hiệu quả!
-            </p>
-            <div className="flex space-x-4">
-              <button className="bg-white text-blue-600 px-6 py-3 rounded-lg font-semibold hover:bg-gray-50 transition-colors">
+        <div className="bg-gradient-to-r from-blue-600 to-teal-500 rounded-2xl p-6 text-white relative overflow-hidden">
+          <div className="relative z-10 flex items-center gap-4">
+            {user?.avatar ? (
+              <img
+                src={user.avatar}
+                alt={user?.name}
+                className="h-14 w-14 rounded-full object-cover"
+              />
+            ) : (
+              <div className="h-14 w-14 bg-white/20 rounded-full flex items-center justify-center text-white text-xl font-semibold">
+                {user?.name?.[0] || "B"}
+              </div>
+            )}
+            <div>
+              <h2 className="text-2xl font-bold">
+                Chào mừng trở lại, BS. {user?.name}
+              </h2>
+              <p className="text-blue-100">
+                Chuyên khoa: {getSpecialtyName(user?.specialty || "")} •{" "}
+                {user?.workplace || "Chưa cập nhật"}
+              </p>
+            </div>
+            <div className="ml-auto flex space-x-3">
+              <button
+                className="bg-white text-blue-600 px-5 py-2 rounded-lg font-semibold hover:bg-gray-50 transition-colors"
+                onClick={() => navigate("/doctor/appointments")}
+              >
                 Bắt đầu khám bệnh
               </button>
               <button
-                className="border border-white text-white px-6 py-3 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
+                className="border border-white text-white px-5 py-2 rounded-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
                 onClick={() => navigate("/doctor/schedule")}
               >
                 Xem ca làm việc
               </button>
             </div>
-          </div>
-          <div className="absolute top-0 right-0 -mr-16 -mt-16">
-            <div className="h-64 w-64 bg-white bg-opacity-10 rounded-full"></div>
           </div>
         </div>
       </div>

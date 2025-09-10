@@ -65,7 +65,6 @@ const adminLogin = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
             admin: adminData,
             token,
         });
-        return;
     }
     catch (error) {
         console.error("Admin login error:", error);
@@ -73,7 +72,6 @@ const adminLogin = (req, res, next) => __awaiter(void 0, void 0, void 0, functio
             success: false,
             message: "Lỗi server",
         });
-        return;
     }
 });
 exports.adminLogin = adminLogin;
@@ -93,7 +91,6 @@ const getAdminProfile = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
             success: true,
             admin,
         });
-        return;
     }
     catch (error) {
         console.error("Get admin profile error:", error);
@@ -101,7 +98,6 @@ const getAdminProfile = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
             success: false,
             message: "Lỗi server",
         });
-        return;
     }
 });
 exports.getAdminProfile = getAdminProfile;

@@ -43,9 +43,21 @@ const patientRegister = (req, res) => __awaiter(void 0, void 0, void 0, function
             address,
         });
         yield patient.save();
+        // Return user data after successful registration
+        const patientData = {
+            _id: patient._id,
+            name: patient.name,
+            email: patient.email,
+            phone: patient.phone,
+            dateOfBirth: patient.dateOfBirth,
+            gender: patient.gender,
+            address: patient.address,
+            role: "patient",
+        };
         res.status(201).json({
             success: true,
             message: "Đăng ký thành công",
+            user: patientData,
         });
     }
     catch (error) {
@@ -96,11 +108,12 @@ const patientLogin = (req, res) => __awaiter(void 0, void 0, void 0, function* (
             dateOfBirth: patient.dateOfBirth,
             gender: patient.gender,
             address: patient.address,
+            role: "patient", // Thêm role vào response
         };
         res.status(200).json({
             success: true,
             message: "Đăng nhập thành công",
-            patient: patientData,
+            user: patientData,
             token,
         });
     }

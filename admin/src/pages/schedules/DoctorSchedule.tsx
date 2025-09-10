@@ -7,6 +7,7 @@ import {
   adminGetAllShifts,
   adminGetPendingShifts,
   adminReplaceDoctor,
+  adminGetActiveSpecialties,
 } from "../../api/adminApi";
 import {
   FaRegCalendarAlt,
@@ -26,7 +27,7 @@ type Doctor = {
   _id: string;
   name?: string;
   email: string;
-  specialty?: string;
+  specialty?: string | { _id: string; name?: string };
 };
 
 type Shift = {
@@ -38,7 +39,13 @@ type Shift = {
   rejectionReason?: string;
   busyReason?: string;
   adminNote?: string;
-  doctorId?: { _id: string; name?: string; email: string; specialty?: string };
+  isBooked?: boolean;
+  doctorId?: {
+    _id: string;
+    name?: string;
+    email: string;
+    specialty?: string | { _id: string; name?: string };
+  };
 };
 
 const DoctorSchedule: React.FC = () => {
@@ -62,6 +69,37 @@ const DoctorSchedule: React.FC = () => {
     useState<Shift | null>(null);
   const [replacementDoctorId, setReplacementDoctorId] = useState<string>("");
   const [adminNote, setAdminNote] = useState<string>("");
+  const [forceReplace, setForceReplace] = useState<boolean>(false);
+  const [specialties, setSpecialties] = useState<
+    { _id: string; name: string }[]
+  >([]);
+
+  const getSpecialtyName = (
+    spec?: string | { _id: string; name?: string }
+  ): string => {
+    if (!spec) return "";
+    if (typeof spec === "object") return spec.name || "(Không xác định)";
+    const hit = specialties.find((s) => s._id === spec);
+    return hit?.name || "(Không xác định)";
+  };
+
+  const getSpecialtyId = (
+    spec?: string | { _id: string; name?: string }
+  ): string | undefined => {
+    if (!spec) return undefined;
+    if (typeof spec === "object") return spec._id;
+    return spec;
+  };
+
+  const getDoctorById = (id?: string) => doctors.find((d) => d._id === id);
+
+  const coversSlot = (shift: Shift, date: string, time: string) => {
+    if (shift.date !== date) return false;
+    const t = toMinutes(time);
+    const st = toMinutes(shift.startTime);
+    const et = toMinutes(shift.endTime);
+    return t >= st && t < et;
+  };
 
   useEffect(() => {
     const loadDoctors = async () => {
@@ -74,6 +112,24 @@ const DoctorSchedule: React.FC = () => {
       }
     };
     loadDoctors();
+  }, [token]);
+
+  useEffect(() => {
+    if (token) {
+      adminGetActiveSpecialties(token)
+        .then((response) => {
+          if (
+            response.data &&
+            response.data.success &&
+            Array.isArray(response.data.data)
+          ) {
+            setSpecialties(response.data.data);
+          }
+        })
+        .catch((error) => {
+          console.error("Error fetching specialties:", error);
+        });
+    }
   }, [token]);
 
   // Generate time slots from 6 AM to 10 PM
@@ -175,15 +231,22 @@ const DoctorSchedule: React.FC = () => {
     return h * 60 + (isNaN(m) ? 0 : m);
   };
 
-  // Check if a time slot is occupied
-  const isSlotOccupied = (date: string, time: string) => {
-    const data = selectedDoctorId ? shifts : globalShifts;
-    const slotMin = toMinutes(time);
-    return data.some((shift) => {
-      if (shift.date !== date) return false;
-      const startMin = toMinutes(shift.startTime);
-      const endMin = toMinutes(shift.endTime);
-      return slotMin >= startMin && slotMin < endMin;
+  // Allow multiple doctors per slot; do not block by capacity
+  const isSlotOccupied = (_date: string, _time: string) => false;
+
+  // Check if slot violates specialty rule (no duplicate specialty)
+  const hasConflictWithOtherDoctors = (
+    date: string,
+    time: string,
+    currentDoctorId: string
+  ) => {
+    const current = getDoctorById(currentDoctorId);
+    const currentSpec = getSpecialtyId(current?.specialty);
+    const covering = globalShifts.filter((s) => coversSlot(s, date, time));
+    // specialty duplication not allowed
+    return covering.some((s) => {
+      const docSpec = getSpecialtyId(s.doctorId?.specialty);
+      return !!currentSpec && !!docSpec && docSpec === currentSpec;
     });
   };
 
@@ -219,6 +282,14 @@ const DoctorSchedule: React.FC = () => {
   // Nhân bản các slot đã chọn sang N ngày tiếp theo kể từ ngày đầu tiên của lựa chọn
   const replicateSelectedAcrossDays = () => {
     if (!selectedDoctorId || selectedSlots.length === 0 || repeatDays <= 0) {
+      // Hiển thị lý do nếu không thể nhân bản
+      if (!selectedDoctorId) {
+        setError("Vui lòng chọn bác sĩ trước khi nhân bản.");
+      } else if (selectedSlots.length === 0) {
+        setError("Vui lòng chọn ít nhất 1 slot để nhân bản.");
+      } else if (repeatDays <= 0) {
+        setError("Số ngày nhân bản phải lớn hơn 0.");
+      }
       return;
     }
     // Lấy các ngày đang chọn theo thứ tự tăng dần
@@ -255,9 +326,15 @@ const DoctorSchedule: React.FC = () => {
         }
       });
     }
-    if (newSlots.length === 0) return;
+    if (newSlots.length === 0) {
+      setError(
+        "Không có slot hợp lệ để nhân bản trong khoảng ngày hiển thị. Hãy tăng số ngày hoặc chọn slot khác."
+      );
+      return;
+    }
 
     setSelectedSlots((prev) => Array.from(new Set([...prev, ...newSlots])));
+    setError("");
   };
 
   const createShiftsFromSelected = async () => {
@@ -333,6 +410,37 @@ const DoctorSchedule: React.FC = () => {
       return;
     }
 
+    // Kiểm tra xung đột với bác sĩ khác
+    const conflictSlots: string[] = [];
+    slots.forEach((slot) => {
+      const slotMin = toMinutes(slot.startTime);
+      const slotMax = toMinutes(slot.endTime);
+
+      // Kiểm tra từng phút trong slot
+      for (let min = slotMin; min < slotMax; min += 30) {
+        const timeStr = `${Math.floor(min / 60)
+          .toString()
+          .padStart(2, "0")}:${(min % 60).toString().padStart(2, "0")}`;
+        if (hasConflictWithOtherDoctors(slot.date, timeStr, selectedDoctorId)) {
+          conflictSlots.push(`${slot.date} ${slot.startTime}-${slot.endTime}`);
+          break;
+        }
+      }
+    });
+
+    if (conflictSlots.length > 0) {
+      const conflictInfo = conflictSlots.slice(0, 3).join(", ");
+      const moreInfo =
+        conflictSlots.length > 3
+          ? ` và ${conflictSlots.length - 3} slot khác`
+          : "";
+      setError(
+        `❌ Không thể tạo ca: Các slot sau đã có ca của bác sĩ khác: ${conflictInfo}${moreInfo}. 
+         Vui lòng chọn slot khác hoặc chọn bác sĩ khác để tránh xung đột.`
+      );
+      return; // Không cho phép tạo ca có xung đột
+    }
+
     setLoading(true);
     try {
       const res = await adminBulkCreateDoctorShifts(token, {
@@ -390,8 +498,23 @@ const DoctorSchedule: React.FC = () => {
         const all = await adminGetAllShifts(token);
         setGlobalShifts(all.data || []);
       } catch {}
-    } catch (e) {
-      setError("Không xóa được ca làm việc");
+      setError(""); // Clear any previous errors
+    } catch (e: any) {
+      console.log("Delete shift error:", e.response?.data);
+
+      if (e.response?.status === 400) {
+        // Lỗi 400 - hiển thị thông báo từ server
+        const errorMessage = e.response.data?.message || "Dữ liệu không hợp lệ";
+        setError(`❌ ${errorMessage}`);
+      } else if (e.response?.status === 404) {
+        // Lỗi 404 - không tìm thấy
+        const errorMessage =
+          e.response.data?.message || "Không tìm thấy ca làm việc";
+        setError(`🔍 ${errorMessage}`);
+      } else {
+        // Lỗi khác
+        setError("❌ Không xóa được ca làm việc. Vui lòng thử lại.");
+      }
     } finally {
       setLoading(false);
     }
@@ -405,6 +528,7 @@ const DoctorSchedule: React.FC = () => {
       await adminReplaceDoctor(token, selectedShiftForReplacement._id, {
         newDoctorId: replacementDoctorId,
         adminNote,
+        forceReplace,
       });
 
       // Reload data
@@ -421,10 +545,49 @@ const DoctorSchedule: React.FC = () => {
       setSelectedShiftForReplacement(null);
       setReplacementDoctorId("");
       setAdminNote("");
+      setForceReplace(false);
 
       setError(""); // Clear any previous errors
-    } catch (e) {
-      setError("Không thay thế được bác sĩ");
+    } catch (e: any) {
+      console.log("Replace doctor error:", e.response?.data);
+
+      if (e.response?.data?.hasConflict) {
+        // Xung đột lịch - hiển thị thông báo chi tiết
+        const conflictData = e.response.data;
+        setError(`⚠️ Xung đột lịch: ${conflictData.message}`);
+
+        // Hiển thị thông tin chi tiết về xung đột nếu có
+        if (conflictData.conflictingShift) {
+          const shift = conflictData.conflictingShift;
+          console.log("Chi tiết xung đột:", {
+            ngày: shift.date,
+            giờ: `${shift.startTime} - ${shift.endTime}`,
+            bácSĩMới: "Đã có lịch làm việc vào thời gian này",
+          });
+        }
+      } else if (e.response?.status === 400) {
+        // Lỗi 400 - hiển thị thông báo từ server
+        const errorMessage = e.response.data?.message || "Dữ liệu không hợp lệ";
+
+        // Kiểm tra các loại lỗi cụ thể
+        if (errorMessage.includes("đã có lịch làm việc")) {
+          setError(
+            `❌ Xung đột lịch: ${errorMessage}. Sử dụng "Force Replace" để bỏ qua kiểm tra này.`
+          );
+        } else if (errorMessage.includes("không thể thay thế")) {
+          setError(`❌ Hạn chế: ${errorMessage}`);
+        } else {
+          setError(`❌ ${errorMessage}`);
+        }
+      } else if (e.response?.status === 404) {
+        // Lỗi 404 - không tìm thấy
+        const errorMessage =
+          e.response.data?.message || "Không tìm thấy dữ liệu";
+        setError(`🔍 ${errorMessage}`);
+      } else {
+        // Lỗi khác
+        setError("❌ Không thay thế được bác sĩ. Vui lòng thử lại.");
+      }
     } finally {
       setLoading(false);
     }
@@ -505,7 +668,7 @@ const DoctorSchedule: React.FC = () => {
           <div className="bg-white rounded-2xl shadow-xl border border-white/50 p-6 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className=" text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <span className="inline-flex items-center gap-2">
                     <FaUserMd /> Chọn bác sĩ
                   </span>
@@ -519,14 +682,16 @@ const DoctorSchedule: React.FC = () => {
                   {doctors.map((d) => (
                     <option key={d._id} value={d._id}>
                       {d.name || d.email}{" "}
-                      {d.specialty ? `- ${d.specialty}` : ""}
+                      {getSpecialtyName(d.specialty)
+                        ? `- ${getSpecialtyName(d.specialty)}`
+                        : ""}
                     </option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                <label className=" text-sm font-semibold text-gray-700 mb-2 flex items-center gap-2">
                   <span className="inline-flex items-center gap-2">
                     <FaCalendarAlt /> Ngày hiện tại
                   </span>
@@ -556,20 +721,40 @@ const DoctorSchedule: React.FC = () => {
                     placeholder="0"
                     title="Số ngày tiếp theo để nhân bản slot"
                   />
-                  <button
-                    onClick={replicateSelectedAcrossDays}
-                    className="px-4 py-3 bg-indigo-500 text-white rounded-xl font-semibold hover:bg-indigo-600 transition-all shadow"
-                    disabled={
+                  {(() => {
+                    const disabledReason = !selectedDoctorId
+                      ? "Chọn bác sĩ trước khi nhân bản"
+                      : selectedSlots.length === 0
+                      ? "Chọn ít nhất 1 slot để nhân bản"
+                      : repeatDays <= 0
+                      ? "Số ngày nhân bản phải > 0"
+                      : loading
+                      ? "Đang xử lý, vui lòng chờ"
+                      : "";
+                    const isDisabled =
                       loading ||
                       !selectedDoctorId ||
                       selectedSlots.length === 0 ||
-                      repeatDays <= 0
-                    }
-                  >
-                    <span className="inline-flex items-center gap-2">
-                      <FaFastForward /> Nhân bản
-                    </span>
-                  </button>
+                      repeatDays <= 0;
+                    return (
+                      <button
+                        onClick={replicateSelectedAcrossDays}
+                        className={`px-4 py-3 bg-indigo-500 text-white rounded-xl font-semibold hover:bg-indigo-600 transition-all shadow ${
+                          isDisabled ? "opacity-60 cursor-not-allowed" : ""
+                        }`}
+                        disabled={isDisabled}
+                        title={
+                          isDisabled
+                            ? disabledReason
+                            : "Nhân bản slot sang các ngày tiếp theo"
+                        }
+                      >
+                        <span className="inline-flex items-center gap-2">
+                          <FaFastForward /> Nhân bản
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
 
                 {selectedSlots.length > 0 && (
@@ -589,8 +774,20 @@ const DoctorSchedule: React.FC = () => {
         </div>
 
         {error && (
-          <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-xl p-4 text-red-600 inline-flex items-center gap-2">
-            <FaExclamationTriangle /> {error}
+          <div className="mb-6 bg-red-50 border-2 border-red-200 rounded-xl p-4 text-red-600">
+            <div className="flex items-start gap-2">
+              <FaExclamationTriangle className="mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-medium">{error}</div>
+                {error.includes("Xung đột lịch") && (
+                  <div className="mt-2 text-sm text-red-700">
+                    💡 <strong>Giải pháp:</strong> Tick chọn "Bỏ qua kiểm tra
+                    xung đột lịch (Force Replace)" trong modal thay thế bác sĩ
+                    để bỏ qua kiểm tra này.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -609,7 +806,7 @@ const DoctorSchedule: React.FC = () => {
                     </h2>
                     {selectedDoctorId && (
                       <p className="text-blue-100">
-                        {selectedDoctor?.specialty}
+                        {getSpecialtyName(selectedDoctor?.specialty)}
                       </p>
                     )}
                   </div>
@@ -634,6 +831,10 @@ const DoctorSchedule: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-red-500 rounded"></div>
                     <span>Đã đặt</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 bg-red-500 rounded"></div>
+                    <span>Ca của bác sĩ khác (không thể tạo ca)</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 bg-blue-500 rounded"></div>
@@ -684,40 +885,79 @@ const DoctorSchedule: React.FC = () => {
                           return t >= st && t < et;
                         });
                         const past = isPastSlot(date, time);
+
+                        // Kiểm tra xung đột với bác sĩ khác
+                        const hasConflict =
+                          selectedDoctorId &&
+                          hasConflictWithOtherDoctors(
+                            date,
+                            time,
+                            selectedDoctorId
+                          );
+
+                        // Xác định màu sắc và trạng thái
+                        let slotColor = "bg-green-500 border-green-600";
+                        let isDisabled = false;
+                        let slotTitle = "";
+
+                        if (past) {
+                          slotColor = "bg-gray-300 border-gray-400";
+                          isDisabled = true;
+                          slotTitle = "Đã qua - Không thể chọn";
+                        } else if (status === "occupied") {
+                          slotColor = "bg-red-500 border-red-600";
+                          isDisabled = true;
+                          slotTitle = `Đã có ca làm việc${
+                            covering?.doctorId
+                              ? ` - ${
+                                  covering.doctorId.name ||
+                                  covering.doctorId.email
+                                }`
+                              : ""
+                          }`;
+                        } else if (hasConflict) {
+                          slotColor = "bg-red-500 border-red-600";
+                          isDisabled = true;
+                          // Tìm bác sĩ cụ thể đã có ca
+                          const conflictingDoctor = globalShifts.find((s) => {
+                            if (
+                              s.date !== date ||
+                              s.doctorId?._id === selectedDoctorId
+                            )
+                              return false;
+                            const t = toMinutes(time);
+                            const st = toMinutes(s.startTime);
+                            const et = toMinutes(s.endTime);
+                            return t >= st && t < et;
+                          });
+                          slotTitle =
+                            conflictingDoctor?.doctorId?.name ||
+                            conflictingDoctor?.doctorId?.email ||
+                            "Bác sĩ khác";
+                        } else if (status === "selected") {
+                          slotColor = "bg-blue-500 border-blue-600 shadow-lg";
+                          isDisabled = false;
+                          slotTitle = "Đang chọn - Click để bỏ chọn";
+                        } else if (!selectedDoctorId) {
+                          slotColor = "bg-green-500 border-green-600";
+                          isDisabled = true;
+                          slotTitle = "Chọn bác sĩ để tạo ca";
+                        } else {
+                          slotColor =
+                            "bg-green-500 border-green-600 hover:bg-green-600";
+                          isDisabled = false;
+                          slotTitle = "Trống - Click để chọn";
+                        }
+
                         return (
                           <button
                             key={`${date}-${time}`}
                             onClick={() => toggleSlot(date, time)}
-                            className={`h-8 w-full rounded-md border-2 transition-all hover:scale-110 ${
-                              past
-                                ? "bg-gray-300 border-gray-400 cursor-not-allowed"
-                                : status === "occupied"
-                                ? "bg-red-500 border-red-600 cursor-not-allowed"
-                                : status === "selected"
-                                ? "bg-blue-500 border-blue-600 shadow-lg cursor-pointer"
-                                : "bg-green-500 border-green-600 hover:bg-green-600 cursor-pointer"
+                            className={`h-8 w-full rounded-md border-2 transition-all hover:scale-110 ${slotColor} ${
+                              isDisabled ? "cursor-not-allowed" : ""
                             }`}
-                            disabled={
-                              past || status === "occupied" || !selectedDoctorId
-                            }
-                            title={
-                              past
-                                ? "Đã qua - Không thể chọn"
-                                : status === "occupied"
-                                ? `Đã có ca làm việc${
-                                    covering?.doctorId
-                                      ? ` - ${
-                                          covering.doctorId.name ||
-                                          covering.doctorId.email
-                                        }`
-                                      : ""
-                                  }`
-                                : !selectedDoctorId
-                                ? "Chọn bác sĩ để tạo ca"
-                                : status === "selected"
-                                ? "Đang chọn - Click để bỏ chọn"
-                                : "Trống - Click để chọn"
-                            }
+                            disabled={isDisabled}
+                            title={slotTitle}
                           />
                         );
                       })}
@@ -732,6 +972,11 @@ const DoctorSchedule: React.FC = () => {
                   <FaExclamationTriangle className="text-blue-600" />{" "}
                   <strong>Hướng dẫn:</strong> Click vào các ô xanh để chọn múi
                   giờ trống, sau đó nhấn "Tạo ca" để tạo ca làm việc.
+                  <br />
+                  <span className="text-red-600">
+                    ⚠️ Ô đỏ = Không thể tạo ca (đã có ca hoặc ca của bác sĩ
+                    khác)
+                  </span>
                 </p>
               </div>
             </div>
@@ -745,7 +990,7 @@ const DoctorSchedule: React.FC = () => {
                     {selectedDoctorId ? (
                       <p className="text-blue-100">
                         {selectedDoctor?.name || selectedDoctor?.email} -{" "}
-                        {selectedDoctor?.specialty}
+                        {getSpecialtyName(selectedDoctor?.specialty)}
                       </p>
                     ) : (
                       <p className="text-blue-100">Tất cả bác sĩ</p>
@@ -771,6 +1016,7 @@ const DoctorSchedule: React.FC = () => {
                         <th className="px-6 py-4 font-semibold">👨‍⚕️ Bác sĩ</th>
                       )}
                       <th className="px-6 py-4 font-semibold">⏱️ Thời gian</th>
+                      <th className="px-6 py-4 font-semibold">📊 Trạng thái</th>
                       <th className="px-6 py-4 font-semibold text-right">
                         ⚡ Hành động
                       </th>
@@ -843,6 +1089,37 @@ const DoctorSchedule: React.FC = () => {
                                 {durationHours}h
                               </span>
                             </td>
+                            <td className="px-6 py-4">
+                              <div className="flex flex-col gap-1">
+                                {/* Trạng thái ca làm việc */}
+                                <span
+                                  className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                    shift.status === "accepted"
+                                      ? "bg-green-100 text-green-700"
+                                      : shift.status === "pending"
+                                      ? "bg-yellow-100 text-yellow-700"
+                                      : shift.status === "rejected"
+                                      ? "bg-red-100 text-red-700"
+                                      : "bg-orange-100 text-orange-700"
+                                  }`}
+                                >
+                                  {shift.status === "accepted"
+                                    ? "✅ Đã chấp nhận"
+                                    : shift.status === "pending"
+                                    ? "⏳ Chờ xác nhận"
+                                    : shift.status === "rejected"
+                                    ? "❌ Đã từ chối"
+                                    : "🚫 Báo bận"}
+                                </span>
+
+                                {/* Trạng thái đặt lịch */}
+                                {shift.isBooked && (
+                                  <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                                    📅 Đã đặt lịch
+                                  </span>
+                                )}
+                              </div>
+                            </td>
                             {!selectedDoctorId && (
                               <td className="px-6 py-4">
                                 <span className="px-2 py-1 rounded bg-gray-100 text-gray-700 text-sm">
@@ -853,15 +1130,34 @@ const DoctorSchedule: React.FC = () => {
                               </td>
                             )}
                             <td className="px-6 py-4 text-right">
-                              <button
-                                onClick={() => deleteShift(shift._id)}
-                                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all shadow-md hover:shadow-lg font-medium"
-                                disabled={loading}
-                              >
-                                <span className="inline-flex items-center gap-2">
-                                  <FaTrash /> Xóa
-                                </span>
-                              </button>
+                              <div className="flex items-center gap-2 justify-end">
+                                {/* Hiển thị trạng thái đặt lịch */}
+                                {shift.isBooked && (
+                                  <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-full text-xs font-medium">
+                                    📅 Đã đặt
+                                  </span>
+                                )}
+
+                                <button
+                                  onClick={() => deleteShift(shift._id)}
+                                  className={`px-4 py-2 rounded-lg font-medium transition-all shadow-md hover:shadow-lg ${
+                                    shift.isBooked
+                                      ? "bg-gray-400 text-gray-600 cursor-not-allowed"
+                                      : "bg-red-500 text-white hover:bg-red-600 cursor-pointer"
+                                  }`}
+                                  disabled={loading || shift.isBooked}
+                                  title={
+                                    shift.isBooked
+                                      ? "Không thể xóa ca đã được đặt"
+                                      : "Xóa ca làm việc"
+                                  }
+                                >
+                                  <span className="inline-flex items-center gap-2">
+                                    <FaTrash />
+                                    {shift.isBooked ? "Không thể xóa" : "Xóa"}
+                                  </span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -871,7 +1167,7 @@ const DoctorSchedule: React.FC = () => {
                       <tr>
                         <td
                           className="px-6 py-12 text-center text-gray-500"
-                          colSpan={selectedDoctorId ? 5 : 6}
+                          colSpan={selectedDoctorId ? 6 : 7}
                         >
                           <div className="flex flex-col items-center gap-4">
                             <div className="text-6xl">📅</div>
@@ -1033,6 +1329,7 @@ const DoctorSchedule: React.FC = () => {
                               setSelectedShiftForReplacement(shift);
                               setReplacementDoctorId("");
                               setAdminNote("");
+                              setForceReplace(false);
                             }}
                             className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors text-sm"
                           >
@@ -1046,8 +1343,8 @@ const DoctorSchedule: React.FC = () => {
                         <div className="text-sm text-gray-600">
                           <strong>Bác sĩ:</strong>{" "}
                           {shift.doctorId?.name || shift.doctorId?.email}
-                          {shift.doctorId?.specialty &&
-                            ` - ${shift.doctorId.specialty}`}
+                          {getSpecialtyName(shift.doctorId?.specialty) &&
+                            ` - ${getSpecialtyName(shift.doctorId?.specialty)}`}
                         </div>
                       </div>
 
@@ -1093,7 +1390,7 @@ const DoctorSchedule: React.FC = () => {
 
         {/* Replace Doctor Modal */}
         {selectedShiftForReplacement && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="text-xl font-bold text-gray-900">
@@ -1104,6 +1401,7 @@ const DoctorSchedule: React.FC = () => {
                     setSelectedShiftForReplacement(null);
                     setReplacementDoctorId("");
                     setAdminNote("");
+                    setForceReplace(false);
                   }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
@@ -1112,6 +1410,34 @@ const DoctorSchedule: React.FC = () => {
               </div>
 
               <div className="space-y-4">
+                {/* Hướng dẫn sử dụng */}
+                <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="text-sm text-blue-800">
+                    <strong>📋 Hướng dẫn thay thế bác sĩ:</strong>
+                    <ul className="mt-2 space-y-1 list-disc list-inside">
+                      <li>Chọn bác sĩ mới từ danh sách</li>
+                      <li>
+                        <strong>⚠️ Xung đột lịch:</strong> Nếu bác sĩ mới đã có
+                        lịch làm việc vào thời gian này, hệ thống sẽ từ chối
+                        thay thế
+                      </li>
+                      <li>
+                        <strong>🔄 Force Replace:</strong> Tick chọn để bỏ qua
+                        kiểm tra xung đột lịch (có thể tạo ra xung đột)
+                      </li>
+                      <li>Thêm ghi chú nếu cần thiết</li>
+                    </ul>
+
+                    <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="text-sm text-yellow-800">
+                        <strong>💡 Lưu ý:</strong> Khi sử dụng Force Replace,
+                        bác sĩ mới có thể có 2 ca làm việc cùng lúc. Chỉ sử dụng
+                        khi thực sự cần thiết.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Bác sĩ mới
@@ -1130,7 +1456,9 @@ const DoctorSchedule: React.FC = () => {
                       .map((d) => (
                         <option key={d._id} value={d._id}>
                           {d.name || d.email}{" "}
-                          {d.specialty ? `- ${d.specialty}` : ""}
+                          {getSpecialtyName(d.specialty)
+                            ? `- ${getSpecialtyName(d.specialty)}`
+                            : ""}
                         </option>
                       ))}
                   </select>
@@ -1147,6 +1475,44 @@ const DoctorSchedule: React.FC = () => {
                     onChange={(e) => setAdminNote(e.target.value)}
                     placeholder="Ghi chú về việc thay thế bác sĩ..."
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="checkbox"
+                      id="forceReplace"
+                      checked={forceReplace}
+                      onChange={(e) => setForceReplace(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                    />
+                    <label
+                      htmlFor="forceReplace"
+                      className="text-sm font-medium text-gray-700"
+                    >
+                      Bỏ qua kiểm tra xung đột lịch (Force Replace)
+                    </label>
+                  </div>
+
+                  {!forceReplace && (
+                    <div className="ml-7 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="text-sm text-yellow-800">
+                        <strong>Lưu ý:</strong> Nếu bác sĩ mới đã có lịch làm
+                        việc vào thời gian này, hệ thống sẽ từ chối thay thế.
+                        Tick chọn "Force Replace" để bỏ qua kiểm tra này.
+                      </div>
+                    </div>
+                  )}
+
+                  {forceReplace && (
+                    <div className="ml-7 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                      <div className="text-sm text-orange-800">
+                        <strong>⚠️ Cảnh báo:</strong> Bạn đã chọn bỏ qua kiểm
+                        tra xung đột lịch. Điều này có thể tạo ra xung đột lịch
+                        làm việc cho bác sĩ mới.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-4">

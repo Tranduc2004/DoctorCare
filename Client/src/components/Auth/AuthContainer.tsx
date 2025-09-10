@@ -21,7 +21,11 @@ const AuthContainer: React.FC = () => {
     <div className={styles.authContainer2col}>
       <div className={styles.authLeft}>
         <h2>
-          Chào mừng bạn đến với <span className={styles.brand}>MediCare</span>
+          Chào mừng bạn đến với{" "}
+          <span className={styles.brand}>
+            <span className="text-gray-800">Medi</span>
+            <span className="text-teal-500">Care</span>
+          </span>
         </h2>
         <p className={styles.desc}>
           Đăng nhập hoặc tạo tài khoản để trải nghiệm dịch vụ y tế hiện đại

@@ -14,6 +14,9 @@ import "./App.css";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import AppointmentPage from "./pages/Patient/Appointment/Appointment";
+import AppointmentHistoryPage from "./pages/Patient/Appointment/History";
+import DoctorsPage from "./pages/Patient/Home/Doctors";
+import DoctorDetailPage from "./pages/Patient/Home/DoctorDetail";
 
 //Doctor
 import LoginDoctor from "./pages/Doctor/Login/Login";
@@ -21,10 +24,13 @@ import RegisterDoctor from "./pages/Doctor/Register/Register";
 import DoctorDashboard from "./pages/Doctor/Home/Home";
 import DoctorSchedulePage from "./pages/Doctor/Schedule/Schedule";
 import DoctorAppointmentsPage from "./pages/Doctor/Appointments/Appointments";
+import DoctorProfilePage from "./pages/Doctor/Profile/Profile";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 import DoctorLayout from "./components/layout/DoctorLayout";
 
 //Patient
+import ForgotPasswordPage from "./pages/Patient/Auth/ForgotPassword";
+import ResetPasswordPage from "./pages/Patient/Auth/ResetPassword";
 
 function PrivateRoute({
   children,
@@ -72,12 +78,17 @@ function PrivateRoute({
 function AppContent() {
   const location = useLocation();
   const isPatientPage =
-    location.pathname === "/" || location.pathname === "/appointment";
+    location.pathname === "/" ||
+    location.pathname === "/appointment" ||
+    location.pathname === "/appointments/my" ||
+    location.pathname.startsWith("/doctors");
 
   const isAuthPage =
     location.pathname === "/login" ||
     location.pathname === "/doctor/login" ||
-    location.pathname === "/doctor/register";
+    location.pathname === "/doctor/register" ||
+    location.pathname === "/forgot-password" ||
+    location.pathname.startsWith("/reset-password");
 
   return (
     <div className="App">
@@ -179,10 +190,22 @@ function AppContent() {
               </PrivateRoute>
             }
           />
+          <Route
+            path="/doctor/profile"
+            element={
+              <PrivateRoute allowedRoles={["doctor"]}>
+                <DoctorLayout>
+                  <DoctorProfilePage />
+                </DoctorLayout>
+              </PrivateRoute>
+            }
+          />
         </Route>
 
         {/* Patient Routes */}
         <Route path="/login" element={<AuthContainer />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route
           path="/appointment"
           element={
@@ -191,9 +214,19 @@ function AppContent() {
             </PrivateRoute>
           }
         />
+        <Route
+          path="/appointments/my"
+          element={
+            <PrivateRoute allowedRoles={["patient"]}>
+              <AppointmentHistoryPage />
+            </PrivateRoute>
+          }
+        />
 
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
+        <Route path="/doctors" element={<DoctorsPage />} />
+        <Route path="/doctors/:id" element={<DoctorDetailPage />} />
       </Routes>
       {isPatientPage && !isAuthPage && <Footer />}
     </div>

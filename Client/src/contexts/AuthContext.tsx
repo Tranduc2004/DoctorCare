@@ -20,6 +20,10 @@ interface User {
   workplace?: string;
   description?: string;
   avatar?: string;
+  education?: string[];
+  certifications?: string[];
+  languages?: string[];
+  consultationFee?: number;
   dateOfBirth?: Date;
   gender?: string;
   address?: string;
@@ -173,6 +177,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       const storageKey = getStorageKey();
       storage?.setItem(storageKey, JSON.stringify(userData));
 
+      // Lưu token cho portal bác sĩ để gọi API bảo vệ
+      if ((response.data as any)?.token) {
+        window.localStorage.setItem("token", (response.data as any).token);
+      }
+
       toast.success("Đăng nhập thành công!");
     } catch (error: unknown) {
       const errorData = error as { response?: { data?: { message?: string } } };
@@ -236,6 +245,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     const storageKey = currentPortal ? "user_doctor" : "user";
 
     storage?.removeItem(storageKey);
+    // Xóa token khi đăng xuất
+    window.localStorage.removeItem("token");
     window.sessionStorage.setItem(
       "lastPortal",
       currentPortal ? "doctor" : "patient"

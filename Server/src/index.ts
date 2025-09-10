@@ -8,6 +8,8 @@ import path from "path";
 import adminRoutes from "./modules/admin/routes";
 import patientRoutes from "./modules/patient/routes";
 import doctorRoutes from "./modules/doctor/routes";
+import { specialtyRoutes, authRoutes } from "./modules/shared/routes";
+import { verifyEmailTransport } from "./shared/utils";
 
 dotenv.config();
 
@@ -26,6 +28,10 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 app.use("/api/admin", adminRoutes);
 app.use("/api/patient", patientRoutes);
 app.use("/api/doctor", doctorRoutes);
+
+// Shared routes (công khai)
+app.use("/api/specialties", specialtyRoutes);
+app.use("/api/auth", authRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -52,13 +58,18 @@ app.use("*", (req, res) => {
 
 mongoose
   .connect(process.env.MONGO_URI as string)
-  .then(() => {
+  .then(async () => {
     console.log("Kết nối MongoDB thành công!");
+
     app.listen(PORT, () => {
       console.log(`Server đang chạy tại http://localhost:${PORT}`);
       console.log(`Admin Auth: http://localhost:${PORT}/api/admin/auth`);
       console.log(`Patient Auth: http://localhost:${PORT}/api/patient/auth`);
       console.log(`Doctor Auth: http://localhost:${PORT}/api/doctor/auth`);
+      console.log(`Shared Auth: http://localhost:${PORT}/api/auth`);
     });
+
+    // Kiểm tra mailer (không chặn server nếu lỗi)
+    verifyEmailTransport().catch(() => {});
   })
   .catch((err: any) => console.error("Lỗi kết nối MongoDB:", err));

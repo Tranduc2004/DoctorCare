@@ -1,11 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../../../contexts/AuthContext";
 import styles from "../../../styles/Auth.module.css";
 import { FaArrowLeftLong } from "react-icons/fa6";
 import { toast } from "react-toastify";
-
-import SPECIALTIES from "../../../constants/specialties";
+import specialtyApi, { ISpecialty } from "../../../api/specialtyApi";
 
 const RegisterDoctor = () => {
   const [formData, setFormData] = useState({
@@ -19,9 +18,28 @@ const RegisterDoctor = () => {
     workplace: "",
     license: null as File | null,
   });
+  const [specialties, setSpecialties] = useState<ISpecialty[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const navigate = useNavigate();
   const { register } = useAuth();
+
+  // Lấy danh sách chuyên khoa khi component mount
+  useEffect(() => {
+    const fetchSpecialties = async () => {
+      try {
+        const data = await specialtyApi.getActiveSpecialties();
+        setSpecialties(data);
+      } catch (error) {
+        console.error("Error fetching specialties:", error);
+        toast.error("Không thể tải danh sách chuyên khoa");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchSpecialties();
+  }, []);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -139,11 +157,15 @@ const RegisterDoctor = () => {
                 required
               >
                 <option value="">Chọn chuyên khoa</option>
-                {SPECIALTIES.map((specialty) => (
-                  <option key={specialty} value={specialty}>
-                    {specialty}
-                  </option>
-                ))}
+                {loading ? (
+                  <option value="">Đang tải...</option>
+                ) : (
+                  specialties.map((specialty) => (
+                    <option key={specialty._id} value={specialty._id}>
+                      {specialty.name}
+                    </option>
+                  ))
+                )}
               </select>
             </div>
 

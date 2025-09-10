@@ -7,7 +7,7 @@ import {
 } from "../../api/appointmentApi";
 import { toast } from "react-toastify";
 import { getDoctors } from "../../api/doctorsApi";
-import SPECIALTIES from "../../constants/specialties";
+import { specialtyApi } from "../../api/specialtyApi";
 
 type Schedule = {
   _id: string;
@@ -16,35 +16,123 @@ type Schedule = {
   endTime: string;
 };
 
+type TimeSlot = {
+  scheduleId: string;
+  date: string;
+  time: string;
+  displayTime: string;
+};
+
+interface Specialty {
+  _id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+}
+
 export default function AppointmentSection() {
   const { user, isAuthenticated } = useAuth();
-  const [specialty, setSpecialty] = useState("");
+  const [selectedSpecialtyId, setSelectedSpecialtyId] = useState("");
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [doctors, setDoctors] = useState<
-    Array<{ _id: string; name: string; specialty?: string }>
+    Array<{
+      _id: string;
+      name: string;
+      specialty?: string;
+      workplace?: string;
+      experience?: number;
+      description?: string;
+      consultationFee?: number;
+    }>
   >([]);
   const [doctorId, setDoctorId] = useState("");
   const [date, setDate] = useState("");
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(false);
-  const [selectedScheduleId, setSelectedScheduleId] = useState("");
+  const [selectedTimeSlot, setSelectedTimeSlot] = useState<TimeSlot | null>(
+    null
+  );
   const [symptoms, setSymptoms] = useState("");
   const [note, setNote] = useState("");
+
+  // Function to generate individual time slots from schedule
+  const generateTimeSlots = (schedule: Schedule): TimeSlot[] => {
+    const slots: TimeSlot[] = [];
+    const startHour = parseInt(schedule.startTime.split(":")[0]);
+    const startMinute = parseInt(schedule.startTime.split(":")[1]);
+    const endHour = parseInt(schedule.endTime.split(":")[0]);
+    const endMinute = parseInt(schedule.endTime.split(":")[1]);
+
+    const startTotalMinutes = startHour * 60 + startMinute;
+    const endTotalMinutes = endHour * 60 + endMinute;
+
+    // Create 30-minute time slots
+    for (
+      let minutes = startTotalMinutes;
+      minutes < endTotalMinutes;
+      minutes += 30
+    ) {
+      const hour = Math.floor(minutes / 60);
+      const minute = minutes % 60;
+      const nextHour = Math.floor((minutes + 30) / 60);
+      const nextMinute = (minutes + 30) % 60;
+
+      const timeString = `${hour.toString().padStart(2, "0")}:${minute
+        .toString()
+        .padStart(2, "0")}`;
+      const nextTimeString = `${nextHour
+        .toString()
+        .padStart(2, "0")}:${nextMinute.toString().padStart(2, "0")}`;
+      const displayTime = `${timeString} - ${nextTimeString}`;
+
+      slots.push({
+        scheduleId: schedule._id,
+        date: schedule.date,
+        time: timeString,
+        displayTime: displayTime,
+      });
+    }
+
+    return slots;
+  };
+
+  // Get specialty name by ID
+  const getSpecialtyName = (specialtyId: string) => {
+    if (!specialtyId) return "";
+    const specialty = specialties.find((s) => s._id === specialtyId);
+    return specialty ? specialty.name : "Không xác định";
+  };
+
+  // Fetch specialties from API
+  useEffect(() => {
+    const loadSpecialties = async () => {
+      try {
+        const data = await specialtyApi.getActiveSpecialties();
+        setSpecialties(data || []);
+      } catch (e: any) {
+        console.error("Error loading specialties:", e);
+        toast.error("Không thể tải danh sách chuyên khoa");
+      }
+    };
+    loadSpecialties();
+  }, []);
 
   useEffect(() => {
     const loadDoctors = async () => {
       try {
-        const data = await getDoctors(specialty || undefined);
+        // Sử dụng selectedSpecialtyId để tìm kiếm bác sĩ theo chuyên khoa
+        const data = await getDoctors(selectedSpecialtyId || undefined);
         setDoctors(data || []);
       } catch (e: any) {
         toast.error(e?.response?.data?.message || "Không tải được bác sĩ");
       }
     };
-    if (specialty) {
+    if (selectedSpecialtyId) {
       loadDoctors();
     } else {
       setDoctors([]);
     }
-  }, [specialty]);
+  }, [selectedSpecialtyId]);
 
   useEffect(() => {
     const load = async () => {
@@ -70,9 +158,29 @@ export default function AppointmentSection() {
     load();
   }, [doctorId]);
 
-  const filteredSchedules = useMemo(() => {
-    if (!date) return schedules;
-    return schedules.filter((s) => s.date === date);
+  const availableTimeSlots = useMemo(() => {
+    let allSlots: TimeSlot[] = [];
+
+    // Generate time slots for all schedules
+    schedules.forEach((schedule) => {
+      const slots = generateTimeSlots(schedule);
+      allSlots = [...allSlots, ...slots];
+    });
+
+    // Filter by selected date if specified
+    if (date) {
+      allSlots = allSlots.filter((slot) => slot.date === date);
+    }
+
+    // Sort by date and time
+    allSlots.sort((a, b) => {
+      if (a.date !== b.date) {
+        return a.date.localeCompare(b.date);
+      }
+      return a.time.localeCompare(b.time);
+    });
+
+    return allSlots;
   }, [date, schedules]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -81,7 +189,7 @@ export default function AppointmentSection() {
       toast.info("Vui lòng đăng nhập để đặt lịch");
       return;
     }
-    if (!doctorId || !selectedScheduleId) {
+    if (!doctorId || !selectedTimeSlot) {
       toast.warning("Hãy chọn bác sĩ và khung giờ");
       return;
     }
@@ -90,12 +198,13 @@ export default function AppointmentSection() {
       await createAppointment({
         patientId: user._id,
         doctorId,
-        scheduleId: selectedScheduleId,
+        scheduleId: selectedTimeSlot.scheduleId,
         symptoms,
         note,
+        appointmentTime: selectedTimeSlot.time, // Add specific time
       });
       toast.success("Đặt lịch thành công! Đang chờ xác nhận");
-      setSelectedScheduleId("");
+      setSelectedTimeSlot(null);
       setSymptoms("");
       setNote("");
     } catch (e: any) {
@@ -104,6 +213,7 @@ export default function AppointmentSection() {
       setLoading(false);
     }
   };
+
   return (
     <section
       className="py-16 bg-gradient-to-r from-blue-500 to-teal-400 text-white"
@@ -149,21 +259,24 @@ export default function AppointmentSection() {
                     Chuyên khoa
                   </label>
                   <select
-                    value={specialty}
+                    value={selectedSpecialtyId}
                     onChange={(e) => {
-                      setSpecialty(e.target.value);
+                      const specialtyId = e.target.value;
+                      setSelectedSpecialtyId(specialtyId);
                       setDoctorId("");
                       setSchedules([]);
-                      setSelectedScheduleId("");
+                      setSelectedTimeSlot(null);
                     }}
                     className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
                   >
                     <option value="">-- Chọn chuyên khoa --</option>
-                    {SPECIALTIES.map((sp) => (
-                      <option key={sp} value={sp}>
-                        {sp}
-                      </option>
-                    ))}
+                    {specialties
+                      .filter((sp) => sp.isActive)
+                      .map((sp) => (
+                        <option key={sp._id} value={sp._id}>
+                          {sp.name}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div>
@@ -172,14 +285,26 @@ export default function AppointmentSection() {
                     value={doctorId}
                     onChange={(e) => setDoctorId(e.target.value)}
                     className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    disabled={!specialty}
+                    disabled={!selectedSpecialtyId}
                   >
                     <option value="">-- Chọn bác sĩ --</option>
-                    {doctors.map((d) => (
-                      <option key={d._id} value={d._id}>
-                        {d.name} {d.specialty ? `- ${d.specialty}` : ""}
-                      </option>
-                    ))}
+                    {doctors.map((d) => {
+                      const specialtyName = getSpecialtyName(d.specialty || "");
+                      const doctorInfo = [
+                        d.name,
+                        specialtyName,
+                        d.workplace,
+                        d.experience ? `${d.experience} năm kinh nghiệm` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" - ");
+
+                      return (
+                        <option key={d._id} value={d._id}>
+                          {doctorInfo}
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
                 <div>
@@ -206,41 +331,54 @@ export default function AppointmentSection() {
               </div>
               <div>
                 <label className="block text-gray-700 mb-2">
-                  Chọn khung giờ trống
+                  Chọn khung giờ trống (mỗi slot 30 phút)
                 </label>
-                <div className="min-h-[56px]">
+                <div className="min-h-[100px] max-h-[200px] overflow-y-auto border border-gray-200 rounded-md p-2">
                   {loading ? (
-                    <div className="flex items-center text-gray-600">
+                    <div className="flex items-center justify-center py-8 text-gray-600">
                       <Loader2 size={18} className="mr-2 animate-spin" />
                       Đang tải lịch...
                     </div>
-                  ) : filteredSchedules.length === 0 ? (
-                    <div className="text-gray-500 text-sm">
-                      Không có khung giờ phù hợp.
+                  ) : availableTimeSlots.length === 0 ? (
+                    <div className="text-gray-500 text-sm text-center py-8">
+                      {!doctorId
+                        ? "Vui lòng chọn bác sĩ để xem lịch trống"
+                        : "Không có khung giờ phù hợp."}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                      {filteredSchedules.map((s) => {
-                        const label = `${s.date} | ${s.startTime} - ${s.endTime}`;
-                        const active = selectedScheduleId === s._id;
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                      {availableTimeSlots.map((slot, index) => {
+                        const isSelected =
+                          selectedTimeSlot?.scheduleId === slot.scheduleId &&
+                          selectedTimeSlot?.time === slot.time;
+                        const displayLabel = date
+                          ? slot.displayTime
+                          : `${slot.date} - ${slot.displayTime}`;
+
                         return (
                           <button
                             type="button"
-                            key={s._id}
-                            onClick={() => setSelectedScheduleId(s._id)}
-                            className={`px-3 py-2 rounded-md border text-sm transition ${
-                              active
+                            key={`${slot.scheduleId}-${slot.time}-${index}`}
+                            onClick={() => setSelectedTimeSlot(slot)}
+                            className={`px-3 py-2 rounded-md border text-sm transition text-left ${
+                              isSelected
                                 ? "bg-teal-500 text-white border-teal-500"
                                 : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
                             }`}
                           >
-                            {label}
+                            {displayLabel}
                           </button>
                         );
                       })}
                     </div>
                   )}
                 </div>
+                {selectedTimeSlot && (
+                  <div className="mt-2 text-sm text-gray-600">
+                    <strong>Đã chọn:</strong> {selectedTimeSlot.date} -{" "}
+                    {selectedTimeSlot.displayTime}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-gray-700 mb-1">Ghi chú</label>

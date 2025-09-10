@@ -35,10 +35,18 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const DoctorScheduleSchema = new mongoose_1.Schema({
-    doctorId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
+    doctorId: { type: mongoose_1.Schema.Types.ObjectId, ref: "Doctor", required: true },
     date: { type: String, required: true },
     startTime: { type: String, required: true },
     endTime: { type: String, required: true },
     isBooked: { type: Boolean, default: false },
+    status: {
+        type: String,
+        enum: ["pending", "accepted", "rejected", "busy"],
+        default: "pending"
+    },
+    rejectionReason: { type: String },
+    busyReason: { type: String },
+    adminNote: { type: String },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model("DoctorSchedule", DoctorScheduleSchema);

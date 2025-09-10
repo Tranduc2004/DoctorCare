@@ -19,3 +19,8 @@ export const getMyAppointments = (patientId: string) =>
   axios
     .get(`${BASE_URL}/patient/appointments`, { params: { patientId } })
     .then((r) => r.data);
+
+export const getMyAppointmentHistory = (patientId: string) =>
+  axios
+    .get(`${BASE_URL}/patient/appointments/history`, { params: { patientId } })
+    .then((r) => r.data);

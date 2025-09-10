@@ -41,8 +41,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
+const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const PatientSchema = new mongoose_1.Schema({
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
@@ -62,6 +66,8 @@ const PatientSchema = new mongoose_1.Schema({
     medicalHistory: [{ type: String }],
     allergies: [{ type: String }],
     avatar: { type: String },
+    resetPasswordToken: { type: String },
+    resetPasswordExpires: { type: Date },
 }, {
     timestamps: true,
 });
@@ -71,10 +77,9 @@ PatientSchema.pre("save", function (next) {
         if (!this.isModified("password"))
             return next();
         try {
-            const bcrypt = yield Promise.resolve().then(() => __importStar(require("bcryptjs")));
-            const salt = yield bcrypt.genSalt(10);
+            const salt = yield bcryptjs_1.default.genSalt(10);
             // Sử dụng type assertion với this as any để tránh lỗi TypeScript
-            this.password = yield bcrypt.hash(this.password, salt);
+            this.password = yield bcryptjs_1.default.hash(this.password, salt);
             next();
         }
         catch (error) {
@@ -85,8 +90,7 @@ PatientSchema.pre("save", function (next) {
 // Method to compare password
 PatientSchema.methods.comparePassword = function (candidatePassword) {
     return __awaiter(this, void 0, void 0, function* () {
-        const bcrypt = yield Promise.resolve().then(() => __importStar(require("bcryptjs")));
-        return bcrypt.compare(candidatePassword, this.password);
+        return bcryptjs_1.default.compare(candidatePassword, this.password);
     });
 };
 exports.default = mongoose_1.default.model("Patient", PatientSchema);

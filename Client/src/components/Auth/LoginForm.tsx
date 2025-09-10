@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import styles from "../../styles/Auth.module.css";
 import { FaArrowLeftLong, FaStethoscope } from "react-icons/fa6";
@@ -48,8 +48,8 @@ const LoginForm: React.FC = () => {
     try {
       await login(email, password);
       // Không cần setTimeout nữa, useEffect sẽ xử lý việc chuyển hướng
-    } catch (err: any) {
-      setError(err?.response?.data?.message || "Đăng nhập thất bại");
+    } catch {
+      setError("Đăng nhập thất bại");
     } finally {
       setIsLoading(false);
     }
@@ -65,7 +65,7 @@ const LoginForm: React.FC = () => {
       await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API call
       toast.info("Chuyển hướng đến trang đăng nhập bác sĩ...");
       navigate("/doctor/login");
-    } catch (err) {
+    } catch {
       toast.error("Có lỗi xảy ra khi chuyển hướng");
     } finally {
       setIsDoctorLoading(false);
@@ -88,7 +88,7 @@ const LoginForm: React.FC = () => {
           id="login-email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className={styles.authFormControl}
+          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-11 text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-4 focus:ring-teal-200 focus:border-teal-500 disabled:opacity-60 disabled:cursor-not-allowed"
           required
           disabled={isLoading}
         />
@@ -119,9 +119,9 @@ const LoginForm: React.FC = () => {
       </div>
 
       <div className={styles.authForgotPassword}>
-        <a href="#" className={styles.authForgotLink}>
+        <Link to="/forgot-password" className={styles.authForgotLink}>
           Quên mật khẩu?
-        </a>
+        </Link>
       </div>
 
       {/* Primary Actions */}

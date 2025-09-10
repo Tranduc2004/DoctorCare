@@ -10,6 +10,8 @@ import {
   Stethoscope,
   Pill,
   FileText,
+  Filter,
+  Search,
 } from "lucide-react";
 
 type Appointment = {
@@ -43,10 +45,9 @@ const DoctorAppointmentsPage: React.FC = () => {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>("");
-  const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  });
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   const loadAppointments = async () => {
     if (!user?._id) return;
@@ -100,8 +101,8 @@ const DoctorAppointmentsPage: React.FC = () => {
       );
 
       if (response.ok) {
-        await loadAppointments(); // Reload data
-        setError(""); // Clear any previous errors
+        await loadAppointments();
+        setError("");
       } else {
         const errorData = await response.json();
         setError(errorData.message || "Không thể cập nhật trạng thái");
@@ -114,19 +115,19 @@ const DoctorAppointmentsPage: React.FC = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending":
-        return "bg-amber-50 text-amber-700 border border-amber-200";
+        return "bg-amber-50 text-amber-700 border-amber-200";
       case "confirmed":
-        return "bg-blue-50 text-blue-700 border border-blue-200";
+        return "bg-blue-50 text-blue-700 border-blue-200";
       case "examining":
-        return "bg-purple-50 text-purple-700 border border-purple-200";
+        return "bg-purple-50 text-purple-700 border-purple-200";
       case "prescribing":
-        return "bg-indigo-50 text-indigo-700 border border-indigo-200";
+        return "bg-indigo-50 text-indigo-700 border-indigo-200";
       case "done":
-        return "bg-emerald-50 text-emerald-700 border border-emerald-200";
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "cancelled":
-        return "bg-red-50 text-red-700 border border-red-200";
+        return "bg-rose-50 text-rose-700 border-rose-200";
       default:
-        return "bg-gray-50 text-gray-700 border border-gray-200";
+        return "bg-gray-50 text-gray-700 border-gray-200";
     }
   };
 
@@ -175,14 +176,12 @@ const DoctorAppointmentsPage: React.FC = () => {
           {
             value: "confirmed",
             label: "Xác nhận",
-            color:
-              "bg-gradient-to-r from-blue-600 to-teal-500 hover:from-blue-700 hover:to-teal-600",
+            color: "bg-blue-600 hover:bg-blue-700 text-white",
           },
           {
             value: "cancelled",
             label: "Hủy",
-            color:
-              "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700",
+            color: "bg-rose-600 hover:bg-rose-700 text-white",
           },
         ];
       case "confirmed":
@@ -190,14 +189,12 @@ const DoctorAppointmentsPage: React.FC = () => {
           {
             value: "examining",
             label: "Bắt đầu khám",
-            color:
-              "bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700",
+            color: "bg-purple-600 hover:bg-purple-700 text-white",
           },
           {
             value: "cancelled",
             label: "Hủy",
-            color:
-              "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700",
+            color: "bg-rose-600 hover:bg-rose-700 text-white",
           },
         ];
       case "examining":
@@ -205,14 +202,12 @@ const DoctorAppointmentsPage: React.FC = () => {
           {
             value: "prescribing",
             label: "Kê đơn",
-            color:
-              "bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700",
+            color: "bg-indigo-600 hover:bg-indigo-700 text-white",
           },
           {
             value: "cancelled",
             label: "Hủy",
-            color:
-              "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700",
+            color: "bg-rose-600 hover:bg-rose-700 text-white",
           },
         ];
       case "prescribing":
@@ -220,14 +215,12 @@ const DoctorAppointmentsPage: React.FC = () => {
           {
             value: "done",
             label: "Hoàn thành",
-            color:
-              "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700",
+            color: "bg-emerald-600 hover:bg-emerald-700 text-white",
           },
           {
             value: "cancelled",
             label: "Hủy",
-            color:
-              "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700",
+            color: "bg-rose-600 hover:bg-rose-700 text-white",
           },
         ];
       default:
@@ -235,9 +228,17 @@ const DoctorAppointmentsPage: React.FC = () => {
     }
   };
 
-  const filteredAppointments = appointments.filter(
-    (apt) => !selectedDate || apt.scheduleId?.date === selectedDate
-  );
+  // Filter appointments based on all filters
+  const filteredAppointments = appointments.filter((apt) => {
+    const matchesDate = !selectedDate || apt.scheduleId?.date === selectedDate;
+    const matchesStatus = !statusFilter || apt.status === statusFilter;
+    const matchesSearch =
+      !searchTerm ||
+      apt.patientId.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      apt.patientId.phone.includes(searchTerm);
+
+    return matchesDate && matchesStatus && matchesSearch;
+  });
 
   const groupedByDate = filteredAppointments.reduce((acc, apt) => {
     const date = apt.scheduleId?.date || "unknown";
@@ -246,113 +247,214 @@ const DoctorAppointmentsPage: React.FC = () => {
     return acc;
   }, {} as Record<string, Appointment[]>);
 
+  // Get unique dates and statuses for filter options
+  const availableDates = [
+    ...new Set(appointments.map((apt) => apt.scheduleId?.date)),
+  ].sort();
+  const availableStatuses = [...new Set(appointments.map((apt) => apt.status))];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-teal-50 to-blue-50 p-6 lg:p-8">
+    <div className="min-h-screen bg-slate-50 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-10">
-          <div className="flex items-center gap-4 mb-4">
-            <div className="p-3 bg-gradient-to-r from-blue-600 to-teal-500 rounded-2xl shadow-lg">
-              <Calendar className="h-8 w-8 text-white" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">
-                Quản lý lịch hẹn
-              </h1>
-              <p className="text-gray-600 text-lg mt-1">
-                Xem và quản lý tất cả lịch hẹn của bệnh nhân
-              </p>
+        <div className="mb-8">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-500 rounded-xl">
+                <Calendar className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-slate-900 mb-1">
+                  Quản lý lịch hẹn
+                </h1>
+                <p className="text-slate-600">
+                  Tổng cộng {appointments.length} lịch hẹn
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Date Filter */}
-        <div className="mb-8">
-          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-6 shadow-lg border border-white/20">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
-              <Calendar className="h-4 w-4 inline mr-2" />
-              Lọc theo ngày
-            </label>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white/80 backdrop-blur-sm shadow-sm text-gray-700 font-medium"
-            />
+        {/* Filters */}
+        <div className="mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="h-5 w-5 text-slate-600" />
+              <h3 className="text-lg font-semibold text-slate-900">Bộ lọc</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Search */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Search className="h-4 w-4 inline mr-1" />
+                  Tìm kiếm bệnh nhân
+                </label>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Tên hoặc số điện thoại..."
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Date Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Calendar className="h-4 w-4 inline mr-1" />
+                  Lọc theo ngày
+                </label>
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Tất cả ngày</option>
+                  {availableDates.map((date) => (
+                    <option key={date} value={date}>
+                      {new Date(date + "T00:00:00").toLocaleDateString("vi-VN")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Lọc theo trạng thái
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  {availableStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {getStatusText(status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Active Filters */}
+            {(selectedDate || statusFilter || searchTerm) && (
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-200">
+                <span className="text-sm text-slate-600">Đang lọc:</span>
+                {searchTerm && (
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                    "{searchTerm}"
+                  </span>
+                )}
+                {selectedDate && (
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString(
+                      "vi-VN"
+                    )}
+                  </span>
+                )}
+                {statusFilter && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+                    {getStatusText(statusFilter)}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedDate("");
+                    setStatusFilter("");
+                    setSearchTerm("");
+                  }}
+                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm hover:bg-slate-200 transition-colors"
+                >
+                  Xóa bộ lọc
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-8 p-4 rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-pink-50 shadow-lg">
+          <div className="mb-6 p-4 rounded-xl border border-rose-200 bg-rose-50">
             <div className="flex items-center gap-3">
-              <XCircle className="h-6 w-6 text-red-600 flex-shrink-0" />
-              <span className="text-red-800 font-semibold">{error}</span>
+              <XCircle className="h-5 w-5 text-rose-600" />
+              <span className="text-rose-800 font-medium">{error}</span>
             </div>
           </div>
         )}
 
         {/* Loading State */}
         {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin"></div>
-              <span className="text-gray-700 font-semibold text-lg">
-                Đang tải...
-              </span>
+          <div className="flex items-center justify-center py-16">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <span className="text-slate-700 font-medium">Đang tải...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Results Summary */}
+        {!loading && (
+          <div className="mb-6">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+              <p className="text-slate-600">
+                Hiển thị{" "}
+                <span className="font-semibold text-slate-900">
+                  {filteredAppointments.length}
+                </span>{" "}
+                trong tổng số{" "}
+                <span className="font-semibold text-slate-900">
+                  {appointments.length}
+                </span>{" "}
+                lịch hẹn
+              </p>
             </div>
           </div>
         )}
 
         {/* Empty State */}
         {Object.keys(groupedByDate).length === 0 && !loading && (
-          <div className="text-center py-20">
-            <div className="w-32 h-32 bg-gradient-to-r from-blue-600 to-teal-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-2xl">
-              <Calendar className="h-16 w-16 text-white" />
+          <div className="text-center py-16">
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="h-8 w-8 text-slate-400" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 mb-3">
-              Không có lịch hẹn
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">
+              Không có lịch hẹn nào
             </h3>
-            <p className="text-gray-600 text-lg">
-              {selectedDate
-                ? `Không có lịch hẹn nào vào ngày ${selectedDate}`
+            <p className="text-slate-600">
+              {selectedDate || statusFilter || searchTerm
+                ? "Không có lịch hẹn nào phù hợp với bộ lọc hiện tại"
                 : "Bạn chưa có lịch hẹn nào"}
             </p>
           </div>
         )}
 
         {/* Appointments by Date */}
-        <div className="space-y-8">
+        <div className="space-y-6">
           {Object.entries(groupedByDate).map(([date, dateAppointments]) => (
-            <div key={date} className="group">
-              <div className="bg-white/90 backdrop-blur-lg rounded-3xl shadow-xl border border-white/30 overflow-hidden hover:shadow-2xl transition-all duration-500 ">
+            <div key={date}>
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* Date Header */}
-                <div className="px-8 py-6 bg-gradient-to-r from-blue-600 to-teal-500 relative overflow-hidden">
-                  <div className="absolute inset-0 bg-black/10 backdrop-blur-sm"></div>
-                  <div className="relative flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl border border-white/30">
-                        <Calendar className="h-6 w-6 text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-2xl font-bold text-white">
-                          {new Date(date + "T00:00:00").toLocaleDateString(
-                            "vi-VN",
-                            {
-                              weekday: "long",
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            }
-                          )}
-                        </h2>
-                        <p className="text-white/80 font-mono text-sm">
-                          {date}
-                        </p>
-                      </div>
+                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-slate-600" />
+                      <h2 className="text-lg font-semibold text-slate-900">
+                        {new Date(date + "T00:00:00").toLocaleDateString(
+                          "vi-VN",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }
+                        )}
+                      </h2>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-white/20 backdrop-blur-sm rounded-full border border-white/30">
-                      <span className="text-white font-bold">
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
                         {dateAppointments.length} lịch hẹn
                       </span>
                     </div>
@@ -360,46 +462,56 @@ const DoctorAppointmentsPage: React.FC = () => {
                 </div>
 
                 {/* Appointments */}
-                <div className="divide-y divide-gray-100/50">
+                <div className="divide-y divide-slate-100">
                   {dateAppointments
-                    .sort((a, b) =>
-                      a.scheduleId.startTime.localeCompare(
-                        b.scheduleId.startTime
-                      )
-                    )
+                    .sort((a, b) => {
+                      const aTime = a.scheduleId?.startTime || "";
+                      const bTime = b.scheduleId?.startTime || "";
+                      return aTime.localeCompare(bTime);
+                    })
                     .map((appointment) => (
                       <div
                         key={appointment._id}
-                        className="px-8 py-6 hover:bg-gradient-to-r hover:from-blue-50/50 hover:to-teal-50/50 transition-all duration-300 group/item"
+                        className="px-6 py-6 hover:bg-slate-50 transition-colors"
                       >
                         <div className="flex items-start justify-between gap-6">
                           {/* Left: Appointment Info */}
-                          <div className="flex items-center gap-6 flex-1">
+                          <div className="flex items-center gap-4 flex-1">
                             {/* Time */}
-                            <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200 shadow-sm">
-                              <Clock className="h-5 w-5 text-emerald-600" />
-                              <span className="font-mono font-bold text-emerald-700 text-lg">
-                                {appointment.scheduleId.startTime} -{" "}
-                                {appointment.scheduleId.endTime}
-                              </span>
-                            </div>
+                            {appointment.scheduleId?.startTime &&
+                            appointment.scheduleId?.endTime ? (
+                              <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                                <Clock className="h-4 w-4 text-emerald-600" />
+                                <span className="font-mono font-medium text-emerald-700">
+                                  {appointment.scheduleId.startTime} -{" "}
+                                  {appointment.scheduleId.endTime}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-lg border border-slate-200">
+                                <Clock className="h-4 w-4 text-slate-600" />
+                                <span className="text-slate-700">
+                                  Chưa có khung giờ
+                                </span>
+                              </div>
+                            )}
 
                             {/* Patient Info */}
-                            <div className="flex items-center gap-3 px-4 py-3 bg-gradient-to-r from-blue-50 to-teal-50 rounded-xl border border-blue-200 shadow-sm">
-                              <User className="h-5 w-5 text-blue-600" />
-                              <span className="text-lg font-semibold text-blue-700">
+                            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg border border-blue-200">
+                              <User className="h-4 w-4 text-blue-600" />
+                              <span className="font-semibold text-blue-700">
                                 {appointment.patientId.name}
                               </span>
                             </div>
 
                             {/* Status */}
                             <div
-                              className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-sm ${getStatusColor(
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${getStatusColor(
                                 appointment.status
                               )}`}
                             >
                               {getStatusIcon(appointment.status)}
-                              <span className="text-lg font-semibold">
+                              <span className="font-medium">
                                 {getStatusText(appointment.status)}
                               </span>
                             </div>
@@ -408,7 +520,7 @@ const DoctorAppointmentsPage: React.FC = () => {
                           {/* Right: Actions & Notes */}
                           <div className="flex flex-col gap-4 items-end">
                             {/* Action Buttons */}
-                            <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2">
                               {getNextStatusOptions(appointment.status).map(
                                 (option) => (
                                   <button
@@ -419,7 +531,7 @@ const DoctorAppointmentsPage: React.FC = () => {
                                         option.value
                                       )
                                     }
-                                    className={`px-5 py-3 text-white rounded-xl transition-all duration-300 text-sm font-bold flex items-center gap-2 shadow-lg hover:shadow-xl transform ${option.color}`}
+                                    className={`px-4 py-2 rounded-lg transition-colors text-sm font-medium flex items-center gap-2 shadow-sm ${option.color}`}
                                   >
                                     {option.value === "examining" && (
                                       <Stethoscope className="h-4 w-4" />
@@ -443,16 +555,16 @@ const DoctorAppointmentsPage: React.FC = () => {
                             </div>
 
                             {/* Symptoms & Notes */}
-                            <div className="flex flex-col gap-3 max-w-sm">
+                            <div className="flex flex-col gap-3 max-w-md">
                               {appointment.symptoms && (
-                                <div className="px-4 py-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-200 shadow-sm">
+                                <div className="px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
                                   <div className="flex items-start gap-3">
-                                    <MessageSquare className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                                    <MessageSquare className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <p className="text-xs font-bold text-orange-700 mb-2 uppercase tracking-wide">
+                                      <p className="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">
                                         Triệu chứng
                                       </p>
-                                      <p className="text-sm text-orange-600 leading-relaxed">
+                                      <p className="text-sm text-amber-600 leading-relaxed">
                                         {appointment.symptoms}
                                       </p>
                                     </div>
@@ -461,14 +573,14 @@ const DoctorAppointmentsPage: React.FC = () => {
                               )}
 
                               {appointment.note && (
-                                <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-teal-50 rounded-xl border border-blue-200 shadow-sm">
+                                <div className="px-4 py-3 bg-slate-50 rounded-lg border border-slate-200">
                                   <div className="flex items-start gap-3">
-                                    <FileText className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                                    <FileText className="h-4 w-4 text-slate-600 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <p className="text-xs font-bold text-blue-700 mb-2 uppercase tracking-wide">
+                                      <p className="text-xs font-semibold text-slate-700 mb-1 uppercase tracking-wide">
                                         Ghi chú
                                       </p>
-                                      <p className="text-sm text-blue-600 leading-relaxed">
+                                      <p className="text-sm text-slate-600 leading-relaxed">
                                         {appointment.note}
                                       </p>
                                     </div>

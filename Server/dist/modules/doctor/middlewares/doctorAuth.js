@@ -9,27 +9,30 @@ const verifyDoctorToken = (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
         if (!authHeader || !authHeader.startsWith("Bearer ")) {
-            return res.status(401).json({
+            res.status(401).json({
                 success: false,
                 message: "Token không hợp lệ",
             });
+            return;
         }
         const token = authHeader.substring(7);
         const decoded = jsonwebtoken_1.default.verify(token, process.env.JWT_SECRET || "your-secret-key");
         if (decoded.role !== "doctor") {
-            return res.status(403).json({
+            res.status(403).json({
                 success: false,
                 message: "Không có quyền truy cập",
             });
+            return;
         }
+        // Gắn thông tin vào request để controller có thể dùng
         req.doctorId = decoded.doctorId;
-        req.doctorUsername = decoded.username;
+        req.doctorEmail = decoded.email;
         req.doctorRole = decoded.role;
         next();
     }
     catch (error) {
         console.error("Doctor token verification error:", error);
-        return res.status(401).json({
+        res.status(401).json({
             success: false,
             message: "Token không hợp lệ hoặc đã hết hạn",
         });

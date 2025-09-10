@@ -3,7 +3,10 @@ import axios from "axios";
 const API_URL = "http://localhost:5000/api";
 
 // Patient auth APIs
-export const patientLogin = async (data: { email: string; password: string }) => {
+export const patientLogin = async (data: {
+  email: string;
+  password: string;
+}) => {
   return axios.post(`${API_URL}/patient/auth/login`, data);
 };
 
@@ -16,7 +19,10 @@ export const patientRegister = async (data: FormData) => {
 };
 
 // Doctor auth APIs
-export const doctorLogin = async (data: { email: string; password: string }) => {
+export const doctorLogin = async (data: {
+  email: string;
+  password: string;
+}) => {
   return axios.post(`${API_URL}/doctor/auth/login`, data);
 };
 
@@ -26,4 +32,16 @@ export const doctorRegister = async (data: FormData) => {
       "Content-Type": "multipart/form-data",
     },
   });
+};
+
+// Shared auth APIs (forgot/reset password for patient)
+export const forgotPassword = async (data: { email: string }) => {
+  return axios.post(`${API_URL}/auth/forgot-password`, data);
+};
+
+export const resetPassword = async (data: {
+  token: string;
+  password: string;
+}) => {
+  return axios.post(`${API_URL}/auth/reset-password`, data);
 };

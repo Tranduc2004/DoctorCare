@@ -22,6 +22,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { toast } from "react-toastify";
+import { FaChevronDown } from "react-icons/fa";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -363,7 +364,7 @@ function NavLinks({ horizontal, onClick, isVisible }: NavLinksProps) {
   const links = [
     { text: "Trang chủ", path: "/", icon: <Home size={20} /> },
     { text: "Dịch vụ", path: "/services", icon: <Layers size={20} /> },
-    { text: "Bác sĩ", path: "/doctors", icon: <Stethoscope size={20} /> },
+    // Dropdown cho Đội ngũ bác sĩ nằm riêng phía dưới
     { text: "Chuyên khoa", path: "/specialties", icon: <User size={20} /> },
     { text: "Tin tức", path: "/news", icon: <Newspaper size={20} /> },
     { text: "Liên hệ", path: "/contact", icon: <Phone size={20} /> },
@@ -393,6 +394,103 @@ function NavLinks({ horizontal, onClick, isVisible }: NavLinksProps) {
           </MenuLink>
         );
       })}
+      <div className="relative group">
+        {/* Nút chính */}
+        <SpecialtyDropdown horizontal={horizontal} onClick={onClick} />
+        {/* Dropdown content */}
+        <div className="absolute left-0 top-[calc(100%-6px)] hidden group-hover:block z-50">
+          {/* Nội dung menu của SpecialtyDropdown sẽ render ở đây */}
+        </div>
+
+        {/* Vùng hover đệm để không bị mất khi rê chuột */}
+        <div className="absolute left-0 top-full w-full h-4 -mt-1 bg-transparent"></div>
+      </div>
     </>
+  );
+}
+
+function SpecialtyDropdown({
+  horizontal,
+  onClick,
+}: {
+  horizontal?: boolean;
+  onClick?: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const closeTimerRef = useRef<number | null>(null);
+  const [specialties, setSpecialties] = useState<
+    { _id: string; name: string }[]
+  >([]);
+  useEffect(() => {
+    import("../../api/specialtyApi").then(({ specialtyApi }) => {
+      specialtyApi
+        .getActiveSpecialties()
+        .then((data) => setSpecialties(data || []))
+        .catch(() => {});
+    });
+  }, []);
+  return (
+    <div
+      className={`relative ${horizontal ? "" : ""}`}
+      onMouseEnter={() => {
+        if (closeTimerRef.current) {
+          window.clearTimeout(closeTimerRef.current);
+          closeTimerRef.current = null;
+        }
+        setOpen(true);
+      }}
+      onMouseLeave={() => {
+        if (closeTimerRef.current) window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = window.setTimeout(
+          () => setOpen(false),
+          150
+        ) as unknown as number;
+      }}
+    >
+      <MenuLink
+        icon={<Stethoscope size={20} />}
+        to="/doctors"
+        horizontal={horizontal}
+        onClick={onClick}
+      >
+        Đội ngũ bác sĩ <FaChevronDown size={12} style={{ marginTop: 4 }} />
+      </MenuLink>
+      {open && specialties.length > 0 && (
+        <div
+          className="absolute left-0 top-full -mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50"
+          onMouseEnter={() => {
+            if (closeTimerRef.current) {
+              window.clearTimeout(closeTimerRef.current);
+              closeTimerRef.current = null;
+            }
+            setOpen(true);
+          }}
+          onMouseLeave={() => {
+            if (closeTimerRef.current)
+              window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = window.setTimeout(
+              () => setOpen(false),
+              150
+            ) as unknown as number;
+          }}
+        >
+          <div className="py-2 max-h-72 overflow-auto">
+            {specialties.map((s) => (
+              <MenuLink
+                key={s._id}
+                icon={<Layers size={16} />}
+                to={`/doctors?specialty=${s._id}`}
+                onClick={onClick}
+                className="w-full !px-4 !py-2 text-sm"
+              >
+                {s.name}
+              </MenuLink>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Vùng đệm hover để dễ di chuyển chuột từ nút xuống menu */}
+      {open && <div className="absolute left-0 top-full w-full h-8 -mt-1" />}
+    </div>
   );
 }

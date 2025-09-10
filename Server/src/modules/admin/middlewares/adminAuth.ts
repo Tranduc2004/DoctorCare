@@ -32,7 +32,7 @@ export const verifyAdminToken: RequestHandler = (
 
     // Check role
     if (decoded.role !== "admin") {
-      res.status(403).json({
+      res.status(401).json({
         success: false,
         message: "Không có quyền truy cập",
       });
@@ -53,3 +53,6 @@ export const verifyAdminToken: RequestHandler = (
     });
   }
 };
+
+// Export alias để tương thích với code hiện tại
+export const adminAuth = verifyAdminToken;

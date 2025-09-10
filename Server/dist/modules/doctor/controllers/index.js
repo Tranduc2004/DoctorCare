@@ -19,3 +19,4 @@ __exportStar(require("./appointmentController"), exports);
 __exportStar(require("./medicalRecordController"), exports);
 __exportStar(require("./scheduleController"), exports);
 __exportStar(require("./authController"), exports);
+__exportStar(require("./doctorController"), exports);

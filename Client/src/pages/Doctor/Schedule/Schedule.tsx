@@ -1,14 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Calendar,
   CheckCircle,
   XCircle,
   AlertTriangle,
   CalendarDays,
-  Timer,
   UserCheck,
   MessageSquare,
-  Sparkles,
+  Filter,
+  Search,
+  Clock,
   CircleDot,
 } from "lucide-react";
 import { useAuth } from "../../../contexts/AuthContext";
@@ -36,6 +37,9 @@ const DoctorSchedulePage: React.FC = () => {
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null);
   const [rejectionReason, setRejectionReason] = useState("");
   const [busyReason, setBusyReason] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<string>("");
+  const [searchTerm, setSearchTerm] = useState<string>("");
 
   const load = async () => {
     if (!user?._id) return;
@@ -58,41 +62,31 @@ const DoctorSchedulePage: React.FC = () => {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?._id]);
-
-  const grouped = useMemo(() => {
-    const map = new Map<string, Shift[]>();
-    shifts.forEach((s) => {
-      if (!map.has(s.date)) map.set(s.date, []);
-      map.get(s.date)!.push(s);
-    });
-    return Array.from(map.entries()).sort(([a], [b]) => (a > b ? 1 : -1));
-  }, [shifts]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "accepted":
-        return "bg-gradient-to-r from-emerald-50 to-green-50 text-emerald-700 border-emerald-200";
+        return "bg-emerald-50 text-emerald-700 border-emerald-200";
       case "rejected":
-        return "bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border-red-200";
+        return "bg-rose-50 text-rose-700 border-rose-200";
       case "busy":
-        return "bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border-amber-200";
+        return "bg-amber-50 text-amber-700 border-amber-200";
       default:
-        return "bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border-blue-200";
+        return "bg-blue-50 text-blue-700 border-blue-200";
     }
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "accepted":
-        return <CheckCircle className="h-3.5 w-3.5" />;
+        return <CheckCircle className="h-4 w-4" />;
       case "rejected":
-        return <XCircle className="h-3.5 w-3.5" />;
+        return <XCircle className="h-4 w-4" />;
       case "busy":
-        return <AlertTriangle className="h-3.5 w-3.5" />;
+        return <AlertTriangle className="h-4 w-4" />;
       default:
-        return <CircleDot className="h-3.5 w-3.5" />;
+        return <CircleDot className="h-4 w-4" />;
     }
   };
 
@@ -124,8 +118,8 @@ const DoctorSchedulePage: React.FC = () => {
       );
 
       if (response.ok) {
-        await load(); // Reload data
-        setError(""); // Clear any previous errors
+        await load();
+        setError("");
       } else {
         setError("Không thể chấp nhận ca làm việc");
       }
@@ -154,11 +148,11 @@ const DoctorSchedulePage: React.FC = () => {
       );
 
       if (response.ok) {
-        await load(); // Reload data
+        await load();
         setShowRejectModal(false);
         setSelectedShift(null);
         setRejectionReason("");
-        setError(""); // Clear any previous errors
+        setError("");
       } else {
         setError("Không thể từ chối ca làm việc");
       }
@@ -187,11 +181,11 @@ const DoctorSchedulePage: React.FC = () => {
       );
 
       if (response.ok) {
-        await load(); // Reload data
+        await load();
         setShowBusyModal(false);
         setSelectedShift(null);
         setBusyReason("");
-        setError(""); // Clear any previous errors
+        setError("");
       } else {
         setError("Không thể báo bận ca làm việc");
       }
@@ -200,30 +194,158 @@ const DoctorSchedulePage: React.FC = () => {
     }
   };
 
+  // Filter shifts based on all filters
+  const filteredShifts = shifts.filter((shift) => {
+    const matchesDate = !selectedDate || shift.date === selectedDate;
+    const matchesStatus = !statusFilter || shift.status === statusFilter;
+    const matchesSearch =
+      !searchTerm ||
+      shift.date.includes(searchTerm) ||
+      shift.startTime.includes(searchTerm) ||
+      shift.endTime.includes(searchTerm);
+
+    return matchesDate && matchesStatus && matchesSearch;
+  });
+
+  const groupedByDate = filteredShifts.reduce((acc, shift) => {
+    const date = shift.date || "unknown";
+    if (!acc[date]) acc[date] = [];
+    acc[date].push(shift);
+    return acc;
+  }, {} as Record<string, Shift[]>);
+
+  // Get unique dates and statuses for filter options
+  const availableDates = [...new Set(shifts.map((shift) => shift.date))].sort();
+  const availableStatuses = [...new Set(shifts.map((shift) => shift.status))];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 p-4 sm:p-6 lg:p-8">
-      <div className="max-w-6xl mx-auto">
+    <div className="min-h-screen bg-slate-50 p-6">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <div className="p-2 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-xl shadow-lg">
-              <CalendarDays className="h-6 w-6 text-white" />
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-4">
+              <div className="p-3 bg-blue-500 rounded-xl">
+                <CalendarDays className="h-6 w-6 text-white" />
+              </div>
+              <div className="flex-1">
+                <h1 className="text-2xl font-bold text-slate-900 mb-1">
+                  Ca làm việc của tôi
+                </h1>
+                <p className="text-slate-600">
+                  Tổng cộng {shifts.length} ca làm việc
+                </p>
+              </div>
             </div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 to-gray-600 bg-clip-text text-transparent">
-              Ca làm việc của tôi
-            </h1>
           </div>
-          <p className="text-gray-600 ml-14">
-            Quản lý lịch trình làm việc cá nhân
-          </p>
+        </div>
+
+        {/* Filters */}
+        <div className="mb-6">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Filter className="h-5 w-5 text-slate-600" />
+              <h3 className="text-lg font-semibold text-slate-900">Bộ lọc</h3>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Search */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Search className="h-4 w-4 inline mr-1" />
+                  Tìm kiếm ca làm việc
+                </label>
+                <input
+                  type="text"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  placeholder="Tìm theo ngày hoặc giờ..."
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              {/* Date Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  <Calendar className="h-4 w-4 inline mr-1" />
+                  Lọc theo ngày
+                </label>
+                <select
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Tất cả ngày</option>
+                  {availableDates.map((date) => (
+                    <option key={date} value={date}>
+                      {new Date(date + "T00:00:00").toLocaleDateString("vi-VN")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Status Filter */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Lọc theo trạng thái
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="">Tất cả trạng thái</option>
+                  {availableStatuses.map((status) => (
+                    <option key={status} value={status}>
+                      {getStatusText(status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Active Filters */}
+            {(selectedDate || statusFilter || searchTerm) && (
+              <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-200">
+                <span className="text-sm text-slate-600">Đang lọc:</span>
+                {searchTerm && (
+                  <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm">
+                    "{searchTerm}"
+                  </span>
+                )}
+                {selectedDate && (
+                  <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm">
+                    {new Date(selectedDate + "T00:00:00").toLocaleDateString(
+                      "vi-VN"
+                    )}
+                  </span>
+                )}
+                {statusFilter && (
+                  <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm">
+                    {getStatusText(statusFilter)}
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setSelectedDate("");
+                    setStatusFilter("");
+                    setSearchTerm("");
+                  }}
+                  className="px-3 py-1 bg-slate-100 text-slate-600 rounded-full text-sm hover:bg-slate-200 transition-colors"
+                >
+                  Xóa bộ lọc
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Error Alert */}
         {error && (
-          <div className="mb-6 p-4 rounded-2xl border border-red-200 bg-gradient-to-r from-red-50 to-rose-50 shadow-sm">
-            <div className="flex items-center gap-2">
-              <XCircle className="h-5 w-5 text-red-600 flex-shrink-0" />
-              <span className="text-red-800 font-medium">{error}</span>
+          <div className="mb-6 p-4 rounded-xl border border-rose-200 bg-rose-50">
+            <div className="flex items-center gap-3">
+              <XCircle className="h-5 w-5 text-rose-600" />
+              <span className="text-rose-800 font-medium">{error}</span>
             </div>
           </div>
         )}
@@ -232,151 +354,153 @@ const DoctorSchedulePage: React.FC = () => {
         {loading && (
           <div className="flex items-center justify-center py-16">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-              <span className="text-gray-600 font-medium">Đang tải...</span>
+              <div className="w-8 h-8 border-3 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+              <span className="text-slate-700 font-medium">Đang tải...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Results Summary */}
+        {!loading && (
+          <div className="mb-6">
+            <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
+              <p className="text-slate-600">
+                Hiển thị{" "}
+                <span className="font-semibold text-slate-900">
+                  {filteredShifts.length}
+                </span>{" "}
+                trong tổng số{" "}
+                <span className="font-semibold text-slate-900">
+                  {shifts.length}
+                </span>{" "}
+                ca làm việc
+              </p>
             </div>
           </div>
         )}
 
         {/* Empty State */}
-        {grouped.length === 0 && !loading && (
+        {Object.keys(groupedByDate).length === 0 && !loading && (
           <div className="text-center py-16">
-            <div className="w-24 h-24 bg-gradient-to-r from-blue-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Calendar className="h-12 w-12 text-blue-500" />
+            <div className="w-16 h-16 bg-slate-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="h-8 w-8 text-slate-400" />
             </div>
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Chưa có ca làm việc
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">
+              Không có ca làm việc nào
             </h3>
-            <p className="text-gray-500">
-              Bạn chưa được phân công ca làm việc nào
+            <p className="text-slate-600">
+              {selectedDate || statusFilter || searchTerm
+                ? "Không có ca làm việc nào phù hợp với bộ lọc hiện tại"
+                : "Bạn chưa có ca làm việc nào"}
             </p>
           </div>
         )}
 
-        {/* Schedule Cards */}
+        {/* Shifts by Date */}
         <div className="space-y-6">
-          {grouped.map(([date, items]) => (
-            <div key={date} className="group">
-              <div className="bg-white/70 backdrop-blur-sm rounded-3xl shadow-xl border border-white/50 overflow-hidden hover:shadow-2xl transition-all duration-300">
+          {Object.entries(groupedByDate).map(([date, dateShifts]) => (
+            <div key={date}>
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 {/* Date Header */}
-                <div className="px-8 py-6 bg-gradient-to-r from-white/80 to-gray-50/80 border-b border-gray-100">
+                <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-2xl shadow-lg">
-                        <Calendar className="h-5 w-5 text-white" />
-                      </div>
-                      <div>
-                        <h2 className="text-xl font-bold text-gray-900">
-                          {new Date(date + "T00:00:00").toLocaleDateString(
-                            "vi-VN",
-                            {
-                              weekday: "long",
-                              year: "numeric",
-                              month: "long",
-                              day: "numeric",
-                            }
-                          )}
-                        </h2>
-                        <p className="text-sm text-gray-500 font-mono">
-                          {date}
-                        </p>
-                      </div>
+                    <div className="flex items-center gap-3">
+                      <Calendar className="h-5 w-5 text-slate-600" />
+                      <h2 className="text-lg font-semibold text-slate-900">
+                        {new Date(date + "T00:00:00").toLocaleDateString(
+                          "vi-VN",
+                          {
+                            weekday: "long",
+                            year: "numeric",
+                            month: "long",
+                            day: "numeric",
+                          }
+                        )}
+                      </h2>
                     </div>
-                    <div className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-full border border-blue-200">
-                      <Sparkles className="h-4 w-4 text-blue-600" />
-                      <span className="text-blue-700 font-semibold">
-                        {items.length} ca
+                    <div className="flex items-center gap-2">
+                      <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                        {dateShifts.length} ca làm việc
                       </span>
                     </div>
                   </div>
                 </div>
 
                 {/* Shifts */}
-                <div className="divide-y divide-gray-100">
-                  {items
-                    .slice()
+                <div className="divide-y divide-slate-100">
+                  {dateShifts
                     .sort(
                       (a, b) =>
                         new Date(date + "T" + a.startTime + ":00").getTime() -
                         new Date(date + "T" + b.startTime + ":00").getTime()
                     )
-                    .map((s) => (
+                    .map((shift) => (
                       <div
-                        key={s._id}
-                        className="px-8 py-6 hover:bg-gradient-to-r hover:from-gray-50/50 hover:to-blue-50/30 transition-all duration-200"
+                        key={shift._id}
+                        className="px-6 py-6 hover:bg-slate-50 transition-colors"
                       >
-                        <div className="flex items-center justify-between">
-                          {/* Shift Info */}
-                          <div className="flex items-center gap-6">
+                        <div className="flex items-start justify-between gap-6">
+                          {/* Left: Shift Info */}
+                          <div className="flex items-center gap-4 flex-1">
                             {/* Time Display */}
-                            <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-emerald-50 to-green-50 rounded-xl border border-emerald-200">
-                                <Timer className="h-4 w-4 text-emerald-600" />
-                                <span className="font-mono font-bold text-emerald-700">
-                                  {s.startTime}
-                                </span>
-                              </div>
-                              <div className="w-8 h-0.5 bg-gradient-to-r from-gray-300 to-gray-400 rounded-full"></div>
-                              <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-red-50 to-rose-50 rounded-xl border border-red-200">
-                                <Timer className="h-4 w-4 text-red-600" />
-                                <span className="font-mono font-bold text-red-700">
-                                  {s.endTime}
-                                </span>
-                              </div>
+                            <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 rounded-lg border border-emerald-200">
+                              <Clock className="h-4 w-4 text-emerald-600" />
+                              <span className="font-mono font-medium text-emerald-700">
+                                {shift.startTime} - {shift.endTime}
+                              </span>
                             </div>
 
-                            {/* Status & Booking Badges */}
-                            <div className="flex items-center gap-3">
-                              {s.isBooked && (
-                                <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl border border-orange-200">
-                                  <UserCheck className="h-4 w-4 text-orange-600" />
-                                  <span className="text-sm font-semibold text-orange-700">
-                                    Đã đặt
-                                  </span>
-                                </div>
-                              )}
+                            {/* Status Badge */}
+                            <div
+                              className={`flex items-center gap-2 px-4 py-2 rounded-lg border ${getStatusColor(
+                                shift.status
+                              )}`}
+                            >
+                              {getStatusIcon(shift.status)}
+                              <span className="font-medium">
+                                {getStatusText(shift.status)}
+                              </span>
+                            </div>
 
-                              <div
-                                className={`flex items-center gap-2 px-3 py-2 rounded-xl border ${getStatusColor(
-                                  s.status
-                                )}`}
-                              >
-                                {getStatusIcon(s.status)}
-                                <span className="text-sm font-semibold">
-                                  {getStatusText(s.status)}
+                            {/* Booking Badge */}
+                            {shift.isBooked && (
+                              <div className="flex items-center gap-2 px-4 py-2 bg-orange-50 rounded-lg border border-orange-200">
+                                <UserCheck className="h-4 w-4 text-orange-600" />
+                                <span className="text-sm font-medium text-orange-700">
+                                  Đã đặt
                                 </span>
                               </div>
-                            </div>
+                            )}
                           </div>
 
-                          {/* Actions & Notes */}
-                          <div className="flex items-center gap-4">
+                          {/* Right: Actions & Notes */}
+                          <div className="flex flex-col gap-4 items-end">
                             {/* Action Buttons */}
-                            {s.status === "pending" && (
+                            {shift.status === "pending" && (
                               <div className="flex items-center gap-2">
                                 <button
-                                  onClick={() => handleAccept(s)}
-                                  className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-xl hover:from-emerald-600 hover:to-green-700 transition-all duration-200 text-sm font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl"
+                                  onClick={() => handleAccept(shift)}
+                                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                                 >
                                   <CheckCircle className="h-4 w-4" />
                                   Chấp nhận
                                 </button>
                                 <button
                                   onClick={() => {
-                                    setSelectedShift(s);
+                                    setSelectedShift(shift);
                                     setShowRejectModal(true);
                                   }}
-                                  className="px-4 py-2 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl hover:from-red-600 hover:to-rose-700 transition-all duration-200 text-sm font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl"
+                                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                                 >
                                   <XCircle className="h-4 w-4" />
                                   Từ chối
                                 </button>
                                 <button
                                   onClick={() => {
-                                    setSelectedShift(s);
+                                    setSelectedShift(shift);
                                     setShowBusyModal(true);
                                   }}
-                                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-xl hover:from-amber-600 hover:to-orange-700 transition-all duration-200 text-sm font-semibold flex items-center gap-2 shadow-lg hover:shadow-xl"
+                                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors text-sm font-medium flex items-center gap-2 shadow-sm"
                                 >
                                   <AlertTriangle className="h-4 w-4" />
                                   Báo bận
@@ -385,49 +509,49 @@ const DoctorSchedulePage: React.FC = () => {
                             )}
 
                             {/* Reason/Note Display */}
-                            <div className="flex flex-col gap-2 max-w-xs">
-                              {s.rejectionReason && (
-                                <div className="px-3 py-2 bg-gradient-to-r from-red-50 to-rose-50 rounded-lg border border-red-200">
-                                  <div className="flex items-start gap-2">
-                                    <MessageSquare className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                            <div className="flex flex-col gap-3 max-w-md">
+                              {shift.rejectionReason && (
+                                <div className="px-4 py-3 bg-rose-50 rounded-lg border border-rose-200">
+                                  <div className="flex items-start gap-3">
+                                    <MessageSquare className="h-4 w-4 text-rose-600 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <p className="text-xs font-semibold text-red-700 mb-1">
-                                        Lý do từ chối:
+                                      <p className="text-xs font-semibold text-rose-700 mb-1 uppercase tracking-wide">
+                                        Lý do từ chối
                                       </p>
-                                      <p className="text-sm text-red-600">
-                                        {s.rejectionReason}
+                                      <p className="text-sm text-rose-600 leading-relaxed">
+                                        {shift.rejectionReason}
                                       </p>
                                     </div>
                                   </div>
                                 </div>
                               )}
 
-                              {s.busyReason && (
-                                <div className="px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 rounded-lg border border-amber-200">
-                                  <div className="flex items-start gap-2">
+                              {shift.busyReason && (
+                                <div className="px-4 py-3 bg-amber-50 rounded-lg border border-amber-200">
+                                  <div className="flex items-start gap-3">
                                     <MessageSquare className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <p className="text-xs font-semibold text-amber-700 mb-1">
-                                        Lý do bận:
+                                      <p className="text-xs font-semibold text-amber-700 mb-1 uppercase tracking-wide">
+                                        Lý do bận
                                       </p>
-                                      <p className="text-sm text-amber-600">
-                                        {s.busyReason}
+                                      <p className="text-sm text-amber-600 leading-relaxed">
+                                        {shift.busyReason}
                                       </p>
                                     </div>
                                   </div>
                                 </div>
                               )}
 
-                              {s.adminNote && (
-                                <div className="px-3 py-2 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
-                                  <div className="flex items-start gap-2">
+                              {shift.adminNote && (
+                                <div className="px-4 py-3 bg-blue-50 rounded-lg border border-blue-200">
+                                  <div className="flex items-start gap-3">
                                     <MessageSquare className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" />
                                     <div>
-                                      <p className="text-xs font-semibold text-blue-700 mb-1">
-                                        Ghi chú admin:
+                                      <p className="text-xs font-semibold text-blue-700 mb-1 uppercase tracking-wide">
+                                        Ghi chú admin
                                       </p>
-                                      <p className="text-sm text-blue-600">
-                                        {s.adminNote}
+                                      <p className="text-sm text-blue-600 leading-relaxed">
+                                        {shift.adminNote}
                                       </p>
                                     </div>
                                   </div>
@@ -448,14 +572,12 @@ const DoctorSchedulePage: React.FC = () => {
       {/* Reject Modal */}
       {showRejectModal && selectedShift && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-white/50 overflow-hidden">
-            <div className="px-8 py-6 bg-gradient-to-r from-red-500 to-rose-600">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/20 rounded-xl">
-                    <XCircle className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-bold text-white">
+                  <XCircle className="h-5 w-5 text-rose-600" />
+                  <h2 className="text-lg font-semibold text-slate-900">
                     Từ chối ca làm việc
                   </h2>
                 </div>
@@ -465,21 +587,21 @@ const DoctorSchedulePage: React.FC = () => {
                     setSelectedShift(null);
                     setRejectionReason("");
                   }}
-                  className="text-white/80 hover:text-white text-2xl transition-colors"
+                  className="text-slate-400 hover:text-slate-600 text-xl transition-colors"
                 >
                   ×
                 </button>
               </div>
             </div>
 
-            <div className="p-8">
-              <div className="space-y-6">
+            <div className="p-6">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Lý do từ chối *
                   </label>
                   <textarea
-                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-4 focus:border-red-500 focus:ring-0 transition-all resize-none bg-gray-50 focus:bg-white"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-rose-500 focus:border-transparent resize-none"
                     rows={4}
                     value={rejectionReason}
                     onChange={(e) => setRejectionReason(e.target.value)}
@@ -495,14 +617,14 @@ const DoctorSchedulePage: React.FC = () => {
                       setSelectedShift(null);
                       setRejectionReason("");
                     }}
-                    className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-2xl font-semibold hover:bg-gray-50 transition-all duration-200"
+                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                   >
                     Hủy
                   </button>
                   <button
                     onClick={handleReject}
                     disabled={!rejectionReason.trim()}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-2xl font-semibold hover:from-red-600 hover:to-rose-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                    className="flex-1 px-4 py-2 bg-rose-600 text-white rounded-lg font-medium hover:bg-rose-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Từ chối
                   </button>
@@ -516,14 +638,12 @@ const DoctorSchedulePage: React.FC = () => {
       {/* Busy Modal */}
       {showBusyModal && selectedShift && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full border border-white/50 overflow-hidden">
-            <div className="px-8 py-6 bg-gradient-to-r from-amber-500 to-orange-600">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden">
+            <div className="px-6 py-4 bg-slate-50 border-b border-slate-200">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 bg-white/20 rounded-xl">
-                    <AlertTriangle className="h-5 w-5 text-white" />
-                  </div>
-                  <h2 className="text-xl font-bold text-white">
+                  <AlertTriangle className="h-5 w-5 text-amber-600" />
+                  <h2 className="text-lg font-semibold text-slate-900">
                     Báo bận ca làm việc
                   </h2>
                 </div>
@@ -533,21 +653,21 @@ const DoctorSchedulePage: React.FC = () => {
                     setSelectedShift(null);
                     setBusyReason("");
                   }}
-                  className="text-white/80 hover:text-white text-2xl transition-colors"
+                  className="text-slate-400 hover:text-slate-600 text-xl transition-colors"
                 >
                   ×
                 </button>
               </div>
             </div>
 
-            <div className="p-8">
-              <div className="space-y-6">
+            <div className="p-6">
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
                     Lý do bận *
                   </label>
                   <textarea
-                    className="w-full border-2 border-gray-200 rounded-2xl px-4 py-4 focus:border-amber-500 focus:ring-0 transition-all resize-none bg-gray-50 focus:bg-white"
+                    className="w-full border border-slate-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-none"
                     rows={4}
                     value={busyReason}
                     onChange={(e) => setBusyReason(e.target.value)}
@@ -563,14 +683,14 @@ const DoctorSchedulePage: React.FC = () => {
                       setSelectedShift(null);
                       setBusyReason("");
                     }}
-                    className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-2xl font-semibold hover:bg-gray-50 transition-all duration-200"
+                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition-colors"
                   >
                     Hủy
                   </button>
                   <button
                     onClick={handleBusy}
                     disabled={!busyReason.trim()}
-                    className="flex-1 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-600 text-white rounded-2xl font-semibold hover:from-amber-600 hover:to-orange-700 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
+                    className="flex-1 px-4 py-2 bg-amber-600 text-white rounded-lg font-medium hover:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Báo bận
                   </button>

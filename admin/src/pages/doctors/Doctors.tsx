@@ -5,12 +5,21 @@ import {
   adminGetDoctorsByStatus,
   adminUpdateUser,
   createDoctor,
+  adminGetAllSpecialties,
 } from "../../api/adminApi";
 import type { User } from "../../types/user";
+
+interface Specialty {
+  _id: string;
+  name: string;
+  description: string;
+  isActive: boolean;
+}
 
 const Doctors: React.FC = () => {
   const { token } = useAdminAuth();
   const [doctors, setDoctors] = useState<User[]>([]);
+  const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string>("");
   const [query, setQuery] = useState<string>("");
@@ -44,17 +53,37 @@ const Doctors: React.FC = () => {
     consultationFee: "",
   });
 
+  const [showReview, setShowReview] = useState<boolean>(false);
+  const [reviewing, setReviewing] = useState<User | null>(null);
+
+  // Fetch specialties
+  const fetchSpecialties = async () => {
+    if (!token) return;
+    try {
+      const response = await adminGetAllSpecialties(token);
+      setSpecialties(response.data.data || []);
+    } catch (error) {
+      console.error("Error fetching specialties:", error);
+    }
+  };
+
+  // Get specialty name by ID
+  const getSpecialtyName = (specialtyId: string) => {
+    const specialty = specialties.find((s) => s._id === specialtyId);
+    return specialty ? specialty.name : "Không xác định";
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       if (!token) return;
       setLoading(true);
       setError("");
       try {
-        const res = await adminGetDoctorsByStatus(
-          token,
-          statusFilter || undefined
-        );
-        setDoctors(res.data || []);
+        const [doctorsRes] = await Promise.all([
+          adminGetDoctorsByStatus(token, statusFilter || undefined),
+          fetchSpecialties(),
+        ]);
+        setDoctors(doctorsRes.data || []);
       } catch (e: unknown) {
         const err = e as {
           response?: { data?: { message?: string } };
@@ -151,6 +180,11 @@ const Doctors: React.FC = () => {
         : "",
     });
     setShowEdit(true);
+  };
+
+  const openReview = (u: User) => {
+    setReviewing(u);
+    setShowReview(true);
   };
 
   const submitEdit = async (e: React.FormEvent) => {
@@ -324,7 +358,7 @@ const Doctors: React.FC = () => {
                       d="M3 8l7.89 4.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
                     />
                   </svg>
-                  Email
+                  Email & Chuyên khoa
                 </div>
                 <div className="flex items-center gap-2">
                   <svg
@@ -372,18 +406,37 @@ const Doctors: React.FC = () => {
                 >
                   <div className="grid grid-cols-5 gap-4 items-center">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
-                        {(u.name || u.username || "?").charAt(0).toUpperCase()}
-                      </div>
+                      {Boolean((u as any).avatar) ? (
+                        <img
+                          src={(u as any).avatar as any}
+                          alt={u.name}
+                          className="w-10 h-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-semibold text-sm">
+                          {(u.name || u.username || "?")
+                            .charAt(0)
+                            .toUpperCase()}
+                        </div>
+                      )}
                       <div>
                         <p className="font-semibold text-gray-900">
                           {u.name || u.username || "(Không tên)"}
                         </p>
-                        <p className="text-sm text-gray-500">ID: {u._id}</p>
+                        <p className="text-sm text-gray-500">
+                          {(u as any).specialty
+                            ? getSpecialtyName((u as any).specialty)
+                            : "Chưa có chuyên khoa"}
+                        </p>
                       </div>
                     </div>
                     <div>
                       <p className="text-gray-900">{u.email || "-"}</p>
+                      <p className="text-sm text-gray-500">
+                        {(u as any).specialty
+                          ? getSpecialtyName((u as any).specialty)
+                          : "Chưa có chuyên khoa"}
+                      </p>
                     </div>
                     <div>
                       <span
@@ -415,12 +468,21 @@ const Doctors: React.FC = () => {
                       </p>
                     </div>
                     <div className="flex justify-center gap-2">
-                      <a
-                        href={`/users/${u._id}`}
-                        className="px-4 py-2 rounded-lg border-2 border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-all duration-300"
-                      >
-                        Chi tiết
-                      </a>
+                      {((u as any).status || "pending") === "pending" ? (
+                        <button
+                          onClick={() => openReview(u)}
+                          className="px-4 py-2 rounded-lg border-2 border-amber-200 text-amber-700 text-sm font-medium hover:bg-amber-50 transition-all duration-300"
+                        >
+                          Xem đăng ký
+                        </button>
+                      ) : (
+                        <a
+                          href={`/users/${u._id}`}
+                          className="px-4 py-2 rounded-lg border-2 border-blue-200 text-blue-700 text-sm font-medium hover:bg-blue-50 transition-all duration-300"
+                        >
+                          Chi tiết
+                        </a>
+                      )}
                       {((u as any).status || "pending") === "pending" && (
                         <>
                           <button
@@ -544,6 +606,166 @@ const Doctors: React.FC = () => {
           </div>
         )}
 
+        {/* Review Modal for pending doctor */}
+        {showReview && reviewing && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl w-full max-w-3xl p-8 shadow-2xl">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Thông tin đăng ký bác sĩ
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowReview(false);
+                    setReviewing(null);
+                  }}
+                  className="px-3 py-1 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50"
+                >
+                  Đóng
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Họ tên</div>
+                  <div className="font-semibold text-gray-900">
+                    {reviewing.name}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Email</div>
+                  <div className="font-semibold text-gray-900">
+                    {reviewing.email}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Số điện thoại</div>
+                  <div className="font-semibold text-gray-900">
+                    {(reviewing as any).phone || "-"}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Chuyên khoa</div>
+                  <div className="font-semibold text-gray-900">
+                    {(reviewing as any).specialty
+                      ? getSpecialtyName((reviewing as any).specialty as any)
+                      : "-"}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Kinh nghiệm (năm)</div>
+                  <div className="font-semibold text-gray-900">
+                    {(reviewing as any).experience ?? "-"}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-sm text-gray-500">Nơi làm việc</div>
+                  <div className="font-semibold text-gray-900">
+                    {(reviewing as any).workplace || "-"}
+                  </div>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <div className="text-sm text-gray-500">Mô tả</div>
+                  <div className="text-gray-800 whitespace-pre-line">
+                    {(reviewing as any).description || "-"}
+                  </div>
+                </div>
+
+                {(reviewing as any).avatar && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-500">Ảnh đại diện</div>
+                    <img
+                      src={(reviewing as any).avatar as any}
+                      alt={reviewing.name}
+                      className="w-28 h-28 rounded-full object-cover border"
+                    />
+                  </div>
+                )}
+
+                {(reviewing as any).consultationFee !== undefined && (
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-500">Phí tư vấn</div>
+                    <div className="font-semibold text-gray-900">
+                      {(reviewing as any).consultationFee}
+                    </div>
+                  </div>
+                )}
+
+                {(reviewing as any).license && (
+                  <div className="space-y-2 md:col-span-2">
+                    <div className="text-sm text-gray-500">
+                      Bằng cấp/Giấy phép
+                    </div>
+                    {String((reviewing as any).license)
+                      .toLowerCase()
+                      .endsWith(".pdf") ? (
+                      <a
+                        href={(reviewing as any).license as any}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 underline"
+                      >
+                        Mở file PDF
+                      </a>
+                    ) : (
+                      <img
+                        src={(reviewing as any).license as any}
+                        alt="license"
+                        className="max-h-64 rounded-lg border"
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end gap-3 mt-8">
+                <button
+                  onClick={async () => {
+                    if (!token || !reviewing) return;
+                    await adminUpdateUser(token, reviewing._id, {
+                      role: "doctor",
+                      status: "rejected",
+                    });
+                    setDoctors((prev) =>
+                      prev.map((d) =>
+                        d._id === reviewing._id
+                          ? ({ ...(d as any), status: "rejected" } as any)
+                          : d
+                      )
+                    );
+                    setShowReview(false);
+                    setReviewing(null);
+                  }}
+                  className="px-5 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700"
+                >
+                  Từ chối
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!token || !reviewing) return;
+                    await adminUpdateUser(token, reviewing._id, {
+                      role: "doctor",
+                      status: "approved",
+                    });
+                    setDoctors((prev) =>
+                      prev.map((d) =>
+                        d._id === reviewing._id
+                          ? ({ ...(d as any), status: "approved" } as any)
+                          : d
+                      )
+                    );
+                    setShowReview(false);
+                    setReviewing(null);
+                  }}
+                  className="px-5 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700"
+                >
+                  Duyệt
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Create Modal */}
         {showCreate && (
           <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
@@ -607,9 +829,8 @@ const Doctors: React.FC = () => {
                       setFormCreate({ ...formCreate, phone: e.target.value })
                     }
                   />
-                  <input
+                  <select
                     className="border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300"
-                    placeholder="Chuyên khoa"
                     value={formCreate.specialty}
                     onChange={(e) =>
                       setFormCreate({
@@ -618,7 +839,16 @@ const Doctors: React.FC = () => {
                       })
                     }
                     required
-                  />
+                  >
+                    <option value="">Chọn chuyên khoa</option>
+                    {specialties
+                      .filter((s) => s.isActive)
+                      .map((specialty) => (
+                        <option key={specialty._id} value={specialty._id}>
+                          {specialty.name}
+                        </option>
+                      ))}
+                  </select>
                   <input
                     className="border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition-all duration-300"
                     placeholder="Kinh nghiệm (năm)"
@@ -737,14 +967,22 @@ const Doctors: React.FC = () => {
                       setFormEdit({ ...formEdit, phone: e.target.value })
                     }
                   />
-                  <input
+                  <select
                     className="border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all duration-300"
-                    placeholder="Chuyên khoa"
                     value={formEdit.specialty}
                     onChange={(e) =>
                       setFormEdit({ ...formEdit, specialty: e.target.value })
                     }
-                  />
+                  >
+                    <option value="">Chọn chuyên khoa</option>
+                    {specialties
+                      .filter((s) => s.isActive)
+                      .map((specialty) => (
+                        <option key={specialty._id} value={specialty._id}>
+                          {specialty.name}
+                        </option>
+                      ))}
+                  </select>
                   <input
                     className="border-2 border-gray-200 rounded-xl px-4 py-3 focus:border-emerald-500 focus:ring-4 focus:ring-emerald-100 transition-all duration-300"
                     placeholder="Kinh nghiệm (năm)"

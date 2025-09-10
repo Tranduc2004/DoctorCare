@@ -35,8 +35,8 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const mongoose_1 = __importStar(require("mongoose"));
 const AppointmentSchema = new mongoose_1.Schema({
-    patientId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
-    doctorId: { type: mongoose_1.Schema.Types.ObjectId, ref: "User", required: true },
+    patientId: { type: mongoose_1.Schema.Types.ObjectId, ref: "Patient", required: true },
+    doctorId: { type: mongoose_1.Schema.Types.ObjectId, ref: "Doctor", required: true },
     scheduleId: {
         type: mongoose_1.Schema.Types.ObjectId,
         ref: "DoctorSchedule",
@@ -44,7 +44,7 @@ const AppointmentSchema = new mongoose_1.Schema({
     },
     status: {
         type: String,
-        enum: ["pending", "confirmed", "cancelled", "done"],
+        enum: ["pending", "confirmed", "examining", "prescribing", "done", "cancelled"],
         default: "pending",
     },
     symptoms: { type: String },

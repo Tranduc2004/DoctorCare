@@ -169,11 +169,161 @@ export const adminGetPendingShifts = async (token: string) => {
 export const adminReplaceDoctor = async (
   token: string,
   id: string,
-  data: { newDoctorId: string; adminNote?: string }
+  data: { newDoctorId: string; adminNote?: string; forceReplace?: boolean }
 ) => {
   return axios.post(
     `${API_URL}/admin/schedules/${id}/replace-doctor`,
     data,
     authHeader(token)
   );
+};
+
+// Admin: Service management APIs
+export const adminGetAllServices = async (token: string) => {
+  return axios.get(`${API_URL}/admin/services`, authHeader(token));
+};
+
+export const adminGetServiceById = async (token: string, id: string) => {
+  return axios.get(`${API_URL}/admin/services/${id}`, authHeader(token));
+};
+
+export const adminCreateService = async (
+  token: string,
+  data: {
+    name: string;
+    description: string;
+    price: number;
+    duration: number;
+  }
+) => {
+  return axios.post(`${API_URL}/admin/services`, data, authHeader(token));
+};
+
+export const adminUpdateService = async (
+  token: string,
+  id: string,
+  data: Partial<{
+    name: string;
+    description: string;
+    price: number;
+    duration: number;
+    isActive: boolean;
+  }>
+) => {
+  return axios.put(`${API_URL}/admin/services/${id}`, data, authHeader(token));
+};
+
+export const adminDeleteService = async (token: string, id: string) => {
+  return axios.delete(`${API_URL}/admin/services/${id}`, authHeader(token));
+};
+
+export const adminSearchServices = async (token: string, query: string) => {
+  return axios.get(
+    `${API_URL}/admin/services/search?q=${query}`,
+    authHeader(token)
+  );
+};
+
+export const adminGetActiveServices = async (token: string) => {
+  return axios.get(`${API_URL}/admin/services/active/list`, authHeader(token));
+};
+
+// Admin: Specialty management APIs
+export const adminGetAllSpecialties = async (token: string) => {
+  return axios.get(`${API_URL}/admin/specialties`, authHeader(token));
+};
+
+export const adminGetSpecialtyById = async (token: string, id: string) => {
+  return axios.get(`${API_URL}/admin/specialties/${id}`, authHeader(token));
+};
+
+export const adminCreateSpecialty = async (
+  token: string,
+  data: {
+    name: string;
+    description: string;
+  }
+) => {
+  return axios.post(`${API_URL}/admin/specialties`, data, authHeader(token));
+};
+
+export const adminUpdateSpecialty = async (
+  token: string,
+  id: string,
+  data: Partial<{
+    name: string;
+    description: string;
+    isActive: boolean;
+  }>
+) => {
+  return axios.put(
+    `${API_URL}/admin/specialties/${id}`,
+    data,
+    authHeader(token)
+  );
+};
+
+export const adminDeleteSpecialty = async (token: string, id: string) => {
+  return axios.delete(`${API_URL}/admin/specialties/${id}`, authHeader(token));
+};
+
+export const adminSearchSpecialties = async (token: string, query: string) => {
+  return axios.get(
+    `${API_URL}/admin/specialties/search?q=${query}`,
+    authHeader(token)
+  );
+};
+
+export const adminGetActiveSpecialties = async (token: string) => {
+  return axios.get(
+    `${API_URL}/admin/specialties/active/list`,
+    authHeader(token)
+  );
+};
+
+// Admin: Appointments management APIs
+export const adminGetAllAppointments = async (
+  token: string,
+  params?: {
+    status?: string;
+    from?: string;
+    to?: string;
+    doctorId?: string;
+    patientId?: string;
+  }
+) => {
+  const search = new URLSearchParams();
+  if (params?.status) search.set("status", params.status);
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  if (params?.doctorId) search.set("doctorId", params.doctorId);
+  if (params?.patientId) search.set("patientId", params.patientId);
+  const qs = search.toString() ? `?${search.toString()}` : "";
+  return axios.get(`${API_URL}/admin/appointments${qs}`, authHeader(token));
+};
+
+export const adminUpdateAppointmentStatus = async (
+  token: string,
+  id: string,
+  status:
+    | "pending"
+    | "confirmed"
+    | "examining"
+    | "prescribing"
+    | "done"
+    | "cancelled"
+) => {
+  return axios.put(
+    `${API_URL}/admin/appointments/status/${id}`,
+    { status },
+    authHeader(token)
+  );
+};
+
+export const adminDeleteAppointment = async (token: string, id: string) => {
+  return axios.delete(`${API_URL}/admin/appointments/${id}`, authHeader(token));
+};
+
+export const adminGetAppointmentStats = async (token: string) => {
+  return axios.get(`${API_URL}/admin/appointments/stats`, authHeader(token));
 };

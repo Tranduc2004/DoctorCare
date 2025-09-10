@@ -14,3 +14,6 @@ export const getDoctors = (specialty?: string) =>
       console.error("Error fetching doctors:", error);
       throw error;
     });
+
+export const getDoctorById = (id: string) =>
+  axios.get(`${BASE_URL}/doctor/doctors/${id}`).then((r) => r.data);

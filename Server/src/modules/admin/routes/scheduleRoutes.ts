@@ -22,14 +22,14 @@ router.post("/", adminCreateDoctorShift);
 // Tạo nhiều ca làm việc
 router.post("/bulk", adminBulkCreateDoctorShifts);
 
-// Lấy ca làm việc theo bác sĩ và khoảng thời gian
-router.get("/:doctorId", adminGetDoctorShifts);
-
 // Lấy tất cả ca làm việc (tùy chọn lọc theo from/to)
 router.get("/", adminGetAllShifts);
 
 // Lấy các ca cần xử lý (pending, rejected, busy)
 router.get("/pending/all", adminGetPendingShifts);
+
+// Thay thế bác sĩ cho ca làm việc (phải đặt trước /:id routes)
+router.post("/:id/replace-doctor", adminReplaceDoctor);
 
 // Cập nhật ca làm việc theo id
 router.put("/:id", adminUpdateDoctorShift);
@@ -37,7 +37,7 @@ router.put("/:id", adminUpdateDoctorShift);
 // Xóa ca làm việc theo id
 router.delete("/:id", adminDeleteDoctorShift);
 
-// Thay thế bác sĩ cho ca làm việc
-router.post("/:id/replace-doctor", adminReplaceDoctor);
+// Lấy ca làm việc theo bác sĩ và khoảng thời gian (phải đặt cuối cùng)
+router.get("/:doctorId", adminGetDoctorShifts);
 
 export default router;

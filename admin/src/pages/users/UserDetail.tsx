@@ -17,22 +17,11 @@ import {
   CheckCircle,
   AlertTriangle,
 } from "lucide-react";
+import { useParams } from "react-router-dom";
+import { useAdminAuth } from "../../hooks/useAdminAuth";
+import { adminGetUserById } from "../../api/adminApi";
 
-// Mock user data for demonstration
-const mockUser = {
-  _id: "64f8b2c1a2b3c4d5e6f7g8h9",
-  name: "Nguyễn Văn An",
-  username: "nguyenvanan",
-  email: "nguyenvanan@example.com",
-  role: "doctor",
-  specialty: "Tim mạch",
-  experience: 8,
-  workplace: "Bệnh viện Chợ Rẫy",
-  description:
-    "Bác sĩ chuyên khoa tim mạch với nhiều năm kinh nghiệm điều trị các bệnh lý tim mạch phức tạp.",
-  createdAt: "2023-06-15T10:30:00Z",
-  updatedAt: "2024-01-20T14:45:00Z",
-};
+// Xóa mock, dùng dữ liệu thật
 
 const UserDetail: React.FC = () => {
   const [user, setUser] = useState<any>(null);
@@ -40,14 +29,25 @@ const UserDetail: React.FC = () => {
   const [error, setError] = useState<string>("");
   const [activeTab, setActiveTab] = useState("overview");
   const [showActions, setShowActions] = useState(false);
+  const { id } = useParams();
+  const { token } = useAdminAuth();
 
   useEffect(() => {
-    // Simulate API call
-    setTimeout(() => {
-      setUser(mockUser);
-      setLoading(false);
-    }, 1500);
-  }, []);
+    const fetchUser = async () => {
+      if (!id || !token) return;
+      setLoading(true);
+      setError("");
+      try {
+        const res = await adminGetUserById(token, id);
+        setUser(res.data);
+      } catch (e) {
+        setError("Không tải được thông tin người dùng");
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUser();
+  }, [id, token]);
 
   const getRoleColor = (role: string) => {
     switch (role) {
@@ -214,13 +214,21 @@ const UserDetail: React.FC = () => {
               ></div>
             </div>
             <div className="relative flex items-center gap-6">
-              <div
-                className={`w-24 h-24 bg-gradient-to-br ${getRoleColor(
-                  user.role
-                )} rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg ring-4 ring-white/20 hover:ring-8 transition-all duration-300`}
-              >
-                {(user.name || user.username || "?").charAt(0).toUpperCase()}
-              </div>
+              {user?.avatar ? (
+                <img
+                  src={user.avatar}
+                  alt={user.name}
+                  className="w-24 h-24 rounded-full object-cover ring-4 ring-white/20 shadow-lg"
+                />
+              ) : (
+                <div
+                  className={`w-24 h-24 bg-gradient-to-br ${getRoleColor(
+                    user.role
+                  )} rounded-full flex items-center justify-center text-white text-3xl font-bold shadow-lg ring-4 ring-white/20 hover:ring-8 transition-all duration-300`}
+                >
+                  {(user.name || user.username || "?").charAt(0).toUpperCase()}
+                </div>
+              )}
               <div className="text-white">
                 <h2 className="text-3xl font-bold mb-2">
                   {user.name || user.username || "(Không tên)"}
