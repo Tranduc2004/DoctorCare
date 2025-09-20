@@ -17,6 +17,8 @@ import AppointmentPage from "./pages/Patient/Appointment/Appointment";
 import AppointmentHistoryPage from "./pages/Patient/Appointment/History";
 import DoctorsPage from "./pages/Patient/Home/Doctors";
 import DoctorDetailPage from "./pages/Patient/Home/DoctorDetail";
+import PatientChatPage from "./pages/Patient/Home/Chat";
+import PatientProfilePage from "./pages/Patient/Home/Profile";
 
 //Doctor
 import LoginDoctor from "./pages/Doctor/Login/Login";
@@ -25,8 +27,11 @@ import DoctorDashboard from "./pages/Doctor/Home/Home";
 import DoctorSchedulePage from "./pages/Doctor/Schedule/Schedule";
 import DoctorAppointmentsPage from "./pages/Doctor/Appointments/Appointments";
 import DoctorProfilePage from "./pages/Doctor/Profile/Profile";
+import DoctorMessagesPage from "./pages/Doctor/Messages/Messages";
 import ProtectedRoute from "./components/Auth/ProtectedRoute";
 import DoctorLayout from "./components/layout/DoctorLayout";
+import GlobalChatNotifier from "./components/Chat/GlobalChatNotifier";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 //Patient
 import ForgotPasswordPage from "./pages/Patient/Auth/ForgotPassword";
@@ -81,6 +86,8 @@ function AppContent() {
     location.pathname === "/" ||
     location.pathname === "/appointment" ||
     location.pathname === "/appointments/my" ||
+    location.pathname === "/chat" ||
+    location.pathname === "/profile" ||
     location.pathname.startsWith("/doctors");
 
   const isAuthPage =
@@ -93,6 +100,7 @@ function AppContent() {
   return (
     <div className="App">
       <ToastContainer position="top-right" autoClose={2500} />
+      <GlobalChatNotifier />
       {isPatientPage && !isAuthPage && <Header />}
       <Routes>
         {/* Doctor Routes */}
@@ -174,6 +182,16 @@ function AppContent() {
             }
           />
           <Route
+            path="/doctor/messages"
+            element={
+              <PrivateRoute allowedRoles={["doctor"]}>
+                <DoctorLayout>
+                  <DoctorMessagesPage />
+                </DoctorLayout>
+              </PrivateRoute>
+            }
+          />
+          <Route
             path="/doctor/settings"
             element={
               <PrivateRoute allowedRoles={["doctor"]}>
@@ -227,6 +245,22 @@ function AppContent() {
         <Route path="/" element={<Home />} />
         <Route path="/doctors" element={<DoctorsPage />} />
         <Route path="/doctors/:id" element={<DoctorDetailPage />} />
+        <Route
+          path="/chat"
+          element={
+            <PrivateRoute allowedRoles={["patient"]}>
+              <PatientChatPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/profile"
+          element={
+            <PrivateRoute allowedRoles={["patient"]}>
+              <PatientProfilePage />
+            </PrivateRoute>
+          }
+        />
       </Routes>
       {isPatientPage && !isAuthPage && <Footer />}
     </div>
@@ -237,7 +271,9 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <AppContent />
+        <ErrorBoundary>
+          <AppContent />
+        </ErrorBoundary>
       </AuthProvider>
     </Router>
   );

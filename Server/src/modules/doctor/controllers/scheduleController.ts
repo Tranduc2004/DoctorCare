@@ -1,27 +1,70 @@
 import { Request, Response } from "express";
 import DoctorSchedule from "../models/DoctorSchedule";
 
+function toMinutes(t: string): number {
+  const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+  return h * 60 + m;
+}
+
+function toTime(mins: number): string {
+  const h = Math.floor(mins / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (mins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
 // Doctor: Tạo lịch làm việc mới
 export const createSchedule = async (
   req: Request,
   res: Response
 ): Promise<void> => {
   try {
-    const { doctorId, date, startTime, endTime } = req.body;
+    const { doctorId, date, startTime, endTime } = req.body as {
+      doctorId?: string;
+      date?: string;
+      startTime?: string;
+      endTime?: string;
+    };
 
     if (!doctorId || !date || !startTime || !endTime) {
       res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
       return;
     }
 
-    const schedule = await DoctorSchedule.create({
-      doctorId,
-      date,
-      startTime,
-      endTime,
-    });
+    // If shift longer than 60 minutes, split into 60-minute slots
+    const startM = toMinutes(startTime);
+    const endM = toMinutes(endTime);
+    const SLOTP = 60;
+    const slots: Array<{ start: string; end: string }> = [];
+    for (let s = startM; s < endM; s += SLOTP) {
+      const e = Math.min(s + SLOTP, endM);
+      if (e - s <= 0) continue;
+      slots.push({ start: toTime(s), end: toTime(e) });
+    }
 
-    res.status(201).json(schedule);
+    // Avoid duplicates: skip if an identical doc exists
+    const created: any[] = [];
+    for (const sl of slots) {
+      const exists = await DoctorSchedule.findOne({
+        doctorId,
+        date,
+        startTime: sl.start,
+        endTime: sl.end,
+      }).lean();
+      if (exists) continue;
+      const doc = await DoctorSchedule.create({
+        doctorId,
+        date,
+        startTime: sl.start,
+        endTime: sl.end,
+      });
+      created.push(doc);
+    }
+
+    res
+      .status(201)
+      .json(created.length ? created : { message: "No new slots" });
   } catch (error) {
     res.status(500).json({ message: "Lỗi tạo lịch", error });
   }
@@ -38,6 +81,57 @@ export const getDoctorSchedules = async (
     if (!doctorId) {
       res.status(400).json({ message: "Thiếu doctorId" });
       return;
+    }
+
+    // Normalize legacy long shifts into 60-minute slots (best-effort)
+    const legacy = await DoctorSchedule.find({
+      doctorId,
+      status: "accepted",
+      isBooked: false,
+    })
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+      return h * 60 + m;
+    };
+    const toTime = (mins: number) => {
+      const h = Math.floor(mins / 60)
+        .toString()
+        .padStart(2, "0");
+      const m = (mins % 60).toString().padStart(2, "0");
+      return `${h}:${m}`;
+    };
+    for (const it of legacy) {
+      const dur =
+        toMinutes((it as any).endTime) - toMinutes((it as any).startTime);
+      if (dur > 60) {
+        const startM = toMinutes((it as any).startTime);
+        const endM = toMinutes((it as any).endTime);
+        for (let s = startM; s < endM; s += 60) {
+          const e = Math.min(s + 60, endM);
+          if (e - s <= 0) continue;
+          const st = toTime(s);
+          const et = toTime(e);
+          const exists = await DoctorSchedule.findOne({
+            doctorId,
+            date: (it as any).date,
+            startTime: st,
+            endTime: et,
+          }).lean();
+          if (!exists) {
+            await DoctorSchedule.create({
+              doctorId,
+              date: (it as any).date,
+              startTime: st,
+              endTime: et,
+              status: "accepted",
+            });
+          }
+        }
+        await DoctorSchedule.findByIdAndDelete((it as any)._id);
+      }
     }
 
     const schedules = await DoctorSchedule.find({
@@ -61,6 +155,57 @@ export const getDoctorSchedulesById = async (
 ): Promise<void> => {
   try {
     const { doctorId } = req.params as { doctorId: string };
+
+    // Normalize legacy long shifts into 60-minute slots (best-effort)
+    const legacy = await DoctorSchedule.find({
+      doctorId,
+      status: "accepted",
+      isBooked: false,
+    })
+      .sort({ date: 1, startTime: 1 })
+      .lean();
+
+    const toMinutes = (t: string) => {
+      const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+      return h * 60 + m;
+    };
+    const toTime = (mins: number) => {
+      const h = Math.floor(mins / 60)
+        .toString()
+        .padStart(2, "0");
+      const m = (mins % 60).toString().padStart(2, "0");
+      return `${h}:${m}`;
+    };
+    for (const it of legacy) {
+      const dur =
+        toMinutes((it as any).endTime) - toMinutes((it as any).startTime);
+      if (dur > 60) {
+        const startM = toMinutes((it as any).startTime);
+        const endM = toMinutes((it as any).endTime);
+        for (let s = startM; s < endM; s += 60) {
+          const e = Math.min(s + 60, endM);
+          if (e - s <= 0) continue;
+          const st = toTime(s);
+          const et = toTime(e);
+          const exists = await DoctorSchedule.findOne({
+            doctorId,
+            date: (it as any).date,
+            startTime: st,
+            endTime: et,
+          }).lean();
+          if (!exists) {
+            await DoctorSchedule.create({
+              doctorId,
+              date: (it as any).date,
+              startTime: st,
+              endTime: et,
+              status: "accepted",
+            });
+          }
+        }
+        await DoctorSchedule.findByIdAndDelete((it as any)._id);
+      }
+    }
 
     const schedules = await DoctorSchedule.find({
       doctorId,

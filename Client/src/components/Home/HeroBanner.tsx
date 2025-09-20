@@ -1,4 +1,6 @@
+import { useNavigate } from "react-router-dom";
 export default function HeroBanner() {
+  const navigate = useNavigate();
   return (
     <section className="relative bg-gradient-to-r from-blue-500 to-teal-400 text-white">
       <div className="container mx-auto px-4 py-16 md:py-24">
@@ -12,7 +14,10 @@ export default function HeroBanner() {
               thân thiện.
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
-              <button className="px-6 py-3 bg-white text-blue-600 font-medium rounded-md hover:bg-gray-100">
+              <button
+                className="px-6 py-3 bg-white text-blue-600 font-medium rounded-md hover:bg-gray-100"
+                onClick={() => navigate("/appointment")}
+              >
                 Đặt lịch ngay
               </button>
               <button className="px-6 py-3 border border-white text-white font-medium rounded-md hover:bg-white hover:text-blue-600 hover:bg-opacity-10">

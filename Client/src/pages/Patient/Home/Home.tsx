@@ -4,6 +4,7 @@ import DoctorSection from "../../../components/Home/DoctorSection";
 import AppointmentSection from "../../../components/Home/AppointmentSection";
 import TestimonialSection from "../../../components/Home/TestimonialSection";
 import FaqSection from "../../../components/Home/FaqSection";
+import FloatingChatWidget from "../../../components/Home/FloatingChatWidget";
 
 // Component chính cho trang chủ
 export default function HomePage() {
@@ -16,6 +17,8 @@ export default function HomePage() {
         <AppointmentSection />
         <TestimonialSection />
         <FaqSection />
+        {/* Gợi ý: thêm đường dẫn hồ sơ/BHYT tại đây hoặc trong Header */}
+        <FloatingChatWidget />
       </main>
     </div>
   );

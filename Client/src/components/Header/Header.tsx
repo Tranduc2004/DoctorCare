@@ -20,14 +20,18 @@ import {
   Mail,
 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import { useEffect as reactUseEffect } from "react";
+import { getUnreadCount } from "../../api/chatApi";
 import { useAuth } from "../../contexts/AuthContext";
 import { toast } from "react-toastify";
 import { FaChevronDown } from "react-icons/fa";
+import { chatBadge } from "../../store/chatBadge";
 
 export default function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [menuAnimation, setMenuAnimation] = useState("hidden");
   const { user, isAuthenticated, logout } = useAuth();
+  const [unread, setUnread] = useState(0);
   const navigate = useNavigate();
   const menuRef = useRef(null);
 
@@ -68,6 +72,41 @@ export default function Header() {
     };
   }, []);
 
+  // Sync unread badge from global store (keeps Header in sync with others)
+  useEffect(() => {
+    // ensure store knows current user and load persisted value
+    chatBadge.setUser(isAuthenticated && user?._id ? user._id : null);
+    // initialize local state from store
+    setUnread(chatBadge.get());
+    const unsub = chatBadge.subscribe((n) => setUnread(n));
+    return () => unsub();
+  }, [isAuthenticated, user?._id]);
+
+  // Polling số tin chưa đọc cho bệnh nhân (also updates global store)
+  reactUseEffect(() => {
+    let timer: number | null = null;
+    const loadUnread = async () => {
+      if (isAuthenticated && user?.role === "patient") {
+        try {
+          const { count } = await getUnreadCount({
+            role: "patient",
+            patientId: user._id,
+          });
+          chatBadge.set(count);
+        } catch {
+          // ignore
+        }
+      } else {
+        chatBadge.set(0);
+      }
+    };
+    loadUnread();
+    timer = window.setInterval(loadUnread, 7000) as unknown as number;
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
+  }, [isAuthenticated, user?._id, user?.role]);
+
   const handleLogout = () => {
     logout();
     closeMenu();
@@ -100,10 +139,15 @@ export default function Header() {
               Đặt lịch khám
             </Link>
             <button
-              className="ml-2 hover:text-teal-500 transition duration-200"
+              className="ml-2 hover:text-teal-500 transition duration-200 relative"
               onClick={openMenu}
             >
               <Menu size={28} />
+              {isAuthenticated && user?.role === "patient" && unread > 0 && (
+                <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] leading-none px-1.5 py-0.5 min-w-[18px] h-[18px]">
+                  {unread > 99 ? "99+" : unread}
+                </span>
+              )}
             </button>
           </div>
         </div>
@@ -232,6 +276,23 @@ export default function Header() {
                         >
                           Bệnh án
                         </MenuLink>
+                      </li>
+                      <li>
+                        <div className="relative">
+                          <MenuLink
+                            icon={<Mail size={18} />}
+                            to="/chat"
+                            onClick={closeMenu}
+                            className="px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg pr-8"
+                          >
+                            Tin nhắn
+                          </MenuLink>
+                          {unread > 0 && (
+                            <span className="absolute top-1 right-2 inline-flex items-center justify-center rounded-full bg-red-500 text-white text-xs px-2 py-0.5">
+                              {unread}
+                            </span>
+                          )}
+                        </div>
                       </li>
                     </ul>
                   </div>

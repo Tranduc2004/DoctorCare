@@ -2,6 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "../../contexts/AuthContext";
 import Sidebar from "./Sidebar";
 import { Bell, Menu, Search } from "lucide-react";
+import { BsChatDots } from "react-icons/bs";
+import { getUnreadCount } from "../../api/chatApi";
+import { Link } from "react-router-dom";
 import { specialtyApi } from "../../api/specialtyApi";
 
 interface Specialty {
@@ -75,7 +78,7 @@ const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
                 <Bell className="h-6 w-6" />
                 <span className="absolute top-0 right-0 h-3 w-3 bg-red-500 rounded-full"></span>
               </button>
-
+              <DoctorChatIcon />
               <div className="flex items-center space-x-3">
                 {user?.avatar ? (
                   <img
@@ -111,3 +114,45 @@ const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
 };
 
 export default DoctorLayout;
+
+function DoctorChatIcon() {
+  const { user } = useAuth();
+  const [unread, setUnread] = useState(0);
+  useEffect(() => {
+    let timer: number | null = null;
+    const load = async () => {
+      if (user?._id) {
+        try {
+          const { count } = await getUnreadCount({
+            role: "doctor",
+            doctorId: user._id,
+          });
+          setUnread(count);
+        } catch {
+          // ignore
+        }
+      } else {
+        setUnread(0);
+      }
+    };
+    load();
+    timer = window.setInterval(load, 7000) as unknown as number;
+    return () => {
+      if (timer) window.clearInterval(timer);
+    };
+  }, [user?._id]);
+
+  return (
+    <Link
+      to="/doctor/messages"
+      className="relative p-2 text-gray-600 hover:text-gray-900"
+    >
+      <BsChatDots className="h-6 w-6" />
+      {unread > 0 && (
+        <span className="absolute -top-1 -right-1 inline-flex items-center justify-center rounded-full bg-red-500 text-white text-xs px-1.5 py-0.5">
+          {unread}
+        </span>
+      )}
+    </Link>
+  );
+}

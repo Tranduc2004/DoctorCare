@@ -8,7 +8,6 @@ import {
 } from "../../api/adminApi";
 import {
   Calendar,
-  Clock,
   Filter,
   Search,
   Trash2,
@@ -43,6 +42,20 @@ type Appointment = {
   createdAt: string;
 };
 
+function deriveKind(a: Appointment): "SERVICE" | "SPECIALTY" {
+  const note = a.note?.toLowerCase() || "";
+  if (
+    note.includes("[dịch vụ]") ||
+    note.includes("khám tổng quát") ||
+    note.includes("khám chuyên khoa") ||
+    note.includes("gói") ||
+    note.includes("tư vấn")
+  ) {
+    return "SERVICE";
+  }
+  return "SPECIALTY";
+}
+
 export default function AdminAppointmentsPage() {
   const { token } = useAdminAuth();
   const [loading, setLoading] = useState(false);
@@ -60,6 +73,7 @@ export default function AdminAppointmentsPage() {
   const [status, setStatus] = useState("");
   const [date, setDate] = useState("");
   const [search, setSearch] = useState("");
+  const [kind, setKind] = useState<"" | "SERVICE" | "SPECIALTY">("");
 
   const loadData = async () => {
     if (!token) return;
@@ -85,15 +99,20 @@ export default function AdminAppointmentsPage() {
   }, [token, status, date]);
 
   const filtered = useMemo(() => {
+    let list = appointments;
+    if (kind) {
+      list = list.filter((a) => deriveKind(a) === kind);
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return appointments;
-    return appointments.filter(
+    if (!q) return list;
+    return list.filter(
       (a) =>
         a.patientId?.name?.toLowerCase().includes(q) ||
         a.doctorId?.name?.toLowerCase().includes(q) ||
-        a.patientId?.phone?.includes(q)
+        a.patientId?.phone?.includes(q) ||
+        a.note?.toLowerCase().includes(q)
     );
-  }, [appointments, search]);
+  }, [appointments, search, kind]);
 
   const onUpdateStatus = async (
     id: string,
@@ -162,7 +181,7 @@ export default function AdminAppointmentsPage() {
             <Filter className="w-5 h-5 text-gray-600" />
             <h3 className="font-semibold text-gray-900">Bộ lọc</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
             <div>
               <label className="block text-sm text-gray-600 mb-1">
                 Trạng thái
@@ -189,6 +208,18 @@ export default function AdminAppointmentsPage() {
                 className="w-full border border-gray-300 rounded-lg px-3 py-2"
               />
             </div>
+            <div>
+              <label className="block text-sm text-gray-600 mb-1">Loại</label>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as any)}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2"
+              >
+                <option value="">Tất cả</option>
+                <option value="SERVICE">Khám dịch vụ</option>
+                <option value="SPECIALTY">Theo khoa/bác sĩ</option>
+              </select>
+            </div>
             <div className="md:col-span-2">
               <label className="block text-sm text-gray-600 mb-1">
                 Tìm kiếm
@@ -198,7 +229,7 @@ export default function AdminAppointmentsPage() {
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Bệnh nhân / Bác sĩ / SĐT"
+                  placeholder="Bệnh nhân / Bác sĩ / SĐT / ghi chú"
                   className="flex-1 outline-none"
                 />
               </div>
@@ -216,6 +247,7 @@ export default function AdminAppointmentsPage() {
                   <Th>Giờ</Th>
                   <Th>Bệnh nhân</Th>
                   <Th>Bác sĩ</Th>
+                  <Th>Loại</Th>
                   <Th>Trạng thái</Th>
                   <Th>Hành động</Th>
                 </tr>
@@ -223,19 +255,19 @@ export default function AdminAppointmentsPage() {
               <tbody className="divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-gray-600">
+                    <td colSpan={7} className="py-10 text-center text-gray-600">
                       Đang tải...
                     </td>
                   </tr>
                 ) : error ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-red-600">
+                    <td colSpan={7} className="py-10 text-center text-red-600">
                       {error}
                     </td>
                   </tr>
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-10 text-center text-gray-600">
+                    <td colSpan={7} className="py-10 text-center text-gray-600">
                       Không có dữ liệu
                     </td>
                   </tr>
@@ -250,6 +282,10 @@ export default function AdminAppointmentsPage() {
                       a.scheduleId?.startTime && a.scheduleId?.endTime
                         ? `${a.scheduleId.startTime} - ${a.scheduleId.endTime}`
                         : "-";
+                    const kindLabel =
+                      deriveKind(a) === "SERVICE"
+                        ? "Khám dịch vụ"
+                        : "Theo khoa/bác sĩ";
                     return (
                       <tr key={a._id} className="hover:bg-gray-50">
                         <Td>{dateLabel}</Td>
@@ -273,6 +309,7 @@ export default function AdminAppointmentsPage() {
                               : ""}
                           </div>
                         </Td>
+                        <Td>{kindLabel}</Td>
                         <Td>
                           <span
                             className={`px-2 py-1 text-xs rounded-full ${statusColor(

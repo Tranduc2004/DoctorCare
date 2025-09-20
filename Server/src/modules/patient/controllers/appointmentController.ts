@@ -33,6 +33,55 @@ export const createAppointment = async (
       return;
     }
 
+    // Enforce: one appointment per patient per day
+    const day = schedule.date; // already YYYY-MM-DD
+    const sameDay = await Appointment.findOne({
+      patientId,
+      // any status except cancelled
+      status: { $ne: "cancelled" },
+    })
+      .populate({ path: "scheduleId", select: "date" })
+      .lean();
+    if (
+      (sameDay as any)?.scheduleId &&
+      (sameDay as any).scheduleId.date === day
+    ) {
+      res.status(400).json({ message: "Mỗi ngày chỉ được đặt 1 lịch" });
+      return;
+    }
+
+    // Optional: one per specialty/day (if doctor has specialty)
+    // We check other appointments this day whose doctor shares same specialty
+    // Note: best-effort to avoid extra joins if model differs
+    const Doctor = require("../../doctor/models/Doctor").default;
+    let specId: string | undefined;
+    try {
+      const doc = await Doctor.findById(doctorId).select("specialty").lean();
+      const anySpec =
+        (doc as any)?.specialty?.toString?.() ?? (doc as any)?.specialty;
+      if (anySpec) specId = String(anySpec);
+    } catch {}
+    if (specId) {
+      const sameDayAppointments = await Appointment.find({
+        patientId,
+        status: { $ne: "cancelled" },
+      })
+        .populate({ path: "scheduleId", select: "date" })
+        .populate({ path: "doctorId", select: "specialty" })
+        .lean();
+      const hasSameSpecSameDay = (sameDayAppointments || []).some((a: any) => {
+        const d = a.scheduleId?.date;
+        const sp = a.doctorId?.specialty?.toString?.() ?? a.doctorId?.specialty;
+        return d === day && sp && specId && sp === specId;
+      });
+      if (hasSameSpecSameDay) {
+        res
+          .status(400)
+          .json({ message: "Mỗi ngày tối đa 1 lịch cho mỗi chuyên khoa" });
+        return;
+      }
+    }
+
     const appointment = await Appointment.create({
       patientId,
       doctorId,
@@ -57,16 +106,40 @@ export const getPatientAppointments = async (
   res: Response
 ): Promise<void> => {
   try {
-    const { patientId } = req.query as { patientId?: string };
-    const list = await Appointment.find({ patientId })
-      .populate("doctorId", "name specialty workplace")
-      .populate("scheduleId")
+    const { patientId } = req.query;
+
+    if (!patientId) {
+      res.status(400).json({ message: "Missing patientId" });
+      return;
+    }
+
+    const appointments = await Appointment.find({ patientId })
+      .populate({
+        path: "doctorId",
+        select: "name specialty workplace",
+        model: "Doctor",
+      })
+      .populate({
+        path: "scheduleId",
+        model: "DoctorSchedule",
+      })
       .sort({ createdAt: -1 })
       .lean();
 
-    res.json(list);
+    console.log("API - Found appointments:", appointments.length);
+
+    // Send response with data property
+    res.json({
+      success: true,
+      data: appointments,
+    });
   } catch (error) {
-    res.status(500).json({ message: "Lỗi lấy lịch hẹn", error });
+    console.error("API Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error fetching appointments",
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 };
 

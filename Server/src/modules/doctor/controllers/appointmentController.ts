@@ -96,6 +96,16 @@ export const updateAppointmentStatus = async (
     appointment.status = status;
     await appointment.save();
 
+    // Free the slot when appointment gets cancelled
+    if (status === "cancelled" && appointment.scheduleId) {
+      try {
+        const DoctorSchedule = require("../models/DoctorSchedule").default;
+        await DoctorSchedule.findByIdAndUpdate(appointment.scheduleId, {
+          isBooked: false,
+        });
+      } catch {}
+    }
+
     res.json(appointment);
   } catch (error) {
     res.status(500).json({ message: "Lỗi cập nhật lịch hẹn", error });

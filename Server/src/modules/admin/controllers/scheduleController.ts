@@ -3,6 +3,22 @@ import DoctorSchedule from "../../doctor/models/DoctorSchedule";
 import Doctor from "../../doctor/models/Doctor";
 import mongoose from "mongoose";
 
+function toMinutes(t?: string): number {
+  if (!t) return 0;
+  const [h, m] = t
+    .slice(0, 5)
+    .split(":")
+    .map((x) => parseInt(x, 10));
+  return h * 60 + m;
+}
+function toTime(mins: number): string {
+  const h = Math.floor(mins / 60)
+    .toString()
+    .padStart(2, "0");
+  const m = (mins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
 // Admin: Tạo 1 ca làm việc cho bác sĩ
 export const adminCreateDoctorShift = async (
   req: Request,
@@ -63,14 +79,35 @@ export const adminCreateDoctorShift = async (
       return;
     }
 
-    const shift = await DoctorSchedule.create({
-      doctorId,
-      date: normalizedDate,
-      startTime: normStart,
-      endTime: normEnd,
-    });
+    // Split long shift into 60-minute slots
+    const startM = toMinutes(normStart);
+    const endM = toMinutes(normEnd);
+    const SLOTP = 60;
+    const created: any[] = [];
+    for (let s = startM; s < endM; s += SLOTP) {
+      const e = Math.min(s + SLOTP, endM);
+      if (e - s <= 0) continue;
+      const st = toTime(s);
+      const et = toTime(e);
+      const exists = await DoctorSchedule.findOne({
+        doctorId,
+        date: normalizedDate,
+        startTime: st,
+        endTime: et,
+      }).lean();
+      if (exists) continue;
+      const item = await DoctorSchedule.create({
+        doctorId,
+        date: normalizedDate,
+        startTime: st,
+        endTime: et,
+      });
+      created.push(item);
+    }
 
-    res.status(201).json(shift);
+    res
+      .status(201)
+      .json(created.length ? created : { message: "No new slots" });
   } catch (error) {
     res.status(500).json({ message: "Lỗi tạo ca làm việc", error });
   }

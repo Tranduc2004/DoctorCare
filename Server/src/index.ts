@@ -8,7 +8,11 @@ import path from "path";
 import adminRoutes from "./modules/admin/routes";
 import patientRoutes from "./modules/patient/routes";
 import doctorRoutes from "./modules/doctor/routes";
-import { specialtyRoutes, authRoutes } from "./modules/shared/routes";
+import {
+  specialtyRoutes,
+  authRoutes,
+  messageRoutes,
+} from "./modules/shared/routes";
 import { verifyEmailTransport } from "./shared/utils";
 
 dotenv.config();
@@ -32,6 +36,7 @@ app.use("/api/doctor", doctorRoutes);
 // Shared routes (công khai)
 app.use("/api/specialties", specialtyRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
