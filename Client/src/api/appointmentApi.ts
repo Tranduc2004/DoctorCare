@@ -23,21 +23,28 @@ interface CreateAppointmentData {
   symptoms?: string;
   note?: string;
   appointmentTime?: string;
+  mode?: "online" | "offline";
+}
+
+interface CreateAppointmentResponse {
+  success?: boolean;
+  data?: Appointment;
+  message?: string;
+  holdExpiresAt?: string | Date;
 }
 
 export const getDoctorSchedules = (doctorId: string): Promise<Schedule[]> =>
   axios
-    .get<ApiResponse<Schedule[]>>(
-      `${BASE_URL}/doctor/schedule/${doctorId}/schedules`
-    )
-    .then((r) => r.data.data);
+    .get<Schedule[]>(`${BASE_URL}/doctor/schedule/${doctorId}/schedules`)
+    .then((r) => r.data);
 
 export const createAppointment = (
   data: CreateAppointmentData
-): Promise<Appointment> =>
+): Promise<CreateAppointmentResponse> =>
+  // Return the full server response so callers can access holdExpiresAt and message
   axios
-    .post<ApiResponse<Appointment>>(`${BASE_URL}/patient/appointments`, data)
-    .then((r) => r.data.data);
+    .post<CreateAppointmentResponse>(`${BASE_URL}/patient/appointments`, data)
+    .then((r) => r.data);
 
 export const getMyAppointments = async (
   patientId: string
@@ -72,12 +79,39 @@ export const getMyProfile = (patientId: string) =>
     .get(`${BASE_URL}/patient/profile/profile`, { params: { patientId } })
     .then((r) => r.data);
 
-export const saveMyProfile = (patientId: string, profile: any) =>
+export const saveMyProfile = (
+  patientId: string,
+  profile: Record<string, unknown>
+) =>
   axios
     .put(`${BASE_URL}/patient/profile/profile`, { patientId, profile })
     .then((r) => r.data);
 
-export const saveMyInsurance = (patientId: string, insurance: any) =>
+export const saveMyInsurance = (
+  patientId: string,
+  insurance: Record<string, unknown>
+) =>
   axios
     .put(`${BASE_URL}/patient/profile/insurance`, { patientId, insurance })
     .then((r) => r.data);
+
+// Doctor APIs
+export const getAppointmentsByDoctor = async (doctorId: string): Promise<Appointment[]> => {
+  if (!doctorId) return [];
+
+  try {
+    const response = await axios.get<Appointment[]>(
+      `${BASE_URL}/doctor/appointments`,
+      {
+        params: { doctorId },
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        timeout: 5000,
+      }
+    );
+
+    return response.data || [];
+  } catch (error) {
+    console.error("Error fetching doctor appointments:", error);
+    return [];
+  }
+};

@@ -3,11 +3,7 @@ import { getDoctors } from "../../../api/doctorsApi";
 import { specialtyApi } from "../../../api/specialtyApi";
 import { Link, useSearchParams } from "react-router-dom";
 
-type Specialty = {
-  _id: string;
-  name: string;
-};
-
+type Specialty = { _id: string; name: string };
 type Doctor = {
   _id: string;
   name: string;
@@ -27,7 +23,9 @@ export default function DoctorsPage() {
   const [error, setError] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [experienceFilter, setExperienceFilter] = useState("");
-  const [sortBy, setSortBy] = useState("name");
+  const [sortBy, setSortBy] = useState<"name" | "experience" | "rating">(
+    "name"
+  );
   const [params, setParams] = useSearchParams();
   const selected = params.get("specialty") || "";
 
@@ -54,28 +52,23 @@ export default function DoctorsPage() {
     load();
   }, [selected]);
 
-  // Filter and search logic
+  // Lọc + tìm + sắp xếp
   useEffect(() => {
     let filtered = [...doctors];
 
-    // Search by name
     if (searchQuery) {
-      filtered = filtered.filter((doctor) =>
-        doctor.name.toLowerCase().includes(searchQuery.toLowerCase())
-      );
+      const q = searchQuery.toLowerCase();
+      filtered = filtered.filter((d) => d.name.toLowerCase().includes(q));
     }
 
-    // Filter by experience
     if (experienceFilter) {
       const [min, max] = experienceFilter.split("-").map(Number);
-      filtered = filtered.filter((doctor) => {
-        const exp = doctor.experience || 0;
-        if (max) return exp >= min && exp <= max;
-        return exp >= min;
+      filtered = filtered.filter((d) => {
+        const exp = d.experience || 0;
+        return max ? exp >= min && exp <= max : exp >= min;
       });
     }
 
-    // Sort
     filtered.sort((a, b) => {
       switch (sortBy) {
         case "experience":
@@ -84,7 +77,7 @@ export default function DoctorsPage() {
           return (b.rating || 0) - (a.rating || 0);
         case "name":
         default:
-          return a.name.localeCompare(b.name);
+          return a.name.localeCompare(b.name, "vi");
       }
     });
 
@@ -93,140 +86,164 @@ export default function DoctorsPage() {
 
   const experienceRanges = [
     { value: "", label: "Tất cả kinh nghiệm" },
-    { value: "0-5", label: "0-5 năm" },
-    { value: "6-10", label: "6-10 năm" },
-    { value: "11-15", label: "11-15 năm" },
-    { value: "16-20", label: "16-20 năm" },
+    { value: "0-5", label: "0–5 năm" },
+    { value: "6-10", label: "6–10 năm" },
+    { value: "11-15", label: "11–15 năm" },
+    { value: "16-20", label: "16–20 năm" },
     { value: "21", label: "Trên 20 năm" },
   ];
 
   const sortOptions = [
-    { value: "name", label: "Tên A-Z" },
+    { value: "name", label: "Tên A–Z" },
     { value: "experience", label: "Kinh nghiệm" },
     { value: "rating", label: "Đánh giá cao nhất" },
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Filter */}
-          <div className="lg:w-80 flex-shrink-0">
-            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 sticky top-8">
-              {/* Header */}
-              <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-6 rounded-t-2xl">
-                <h2 className="text-xl font-bold text-white flex items-center gap-3">
-                  <svg
-                    className="w-6 h-6"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
-                    />
-                  </svg>
-                  Bộ lọc tìm kiếm
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-teal-50">
+      <div className="min-h-[70vh] bg-slate-50">
+        <div className="bg-gradient-to-r from-blue-500 to-teal-400 text-white">
+          <div className="mx-auto max-w-6xl px-4 py-8 pl-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div className="">
+              <h1 className="text-2xl sm:text-3xl font-bold">Đội ngũ bác sĩ</h1>
+              <p className="text-white/90">
+                Tìm thấy {filteredDoctors.length} bác sĩ
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <label htmlFor="sort" className="text-white/90">
+                Sắp xếp
+              </label>
+              <select
+                id="sort"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="h-10 rounded-lg bg-white px-3 text-black text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
+              >
+                {sortOptions.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-6 lg:flex-row w-0-full max-w-7xl mx-auto px-4 py-6">
+          {/* Sidebar bộ lọc */}
+          <aside className="lg:w-80 shrink-0">
+            <div className="sticky top-6 rounded-xl bg-white/80 backdrop-blur ring-1 ring-slate-200">
+              <div className="border-b border-slate-200 px-5 py-4">
+                <h2 className="text-base font-semibold text-slate-900">
+                  Bộ lọc
                 </h2>
               </div>
 
-              <div className="p-6 space-y-6">
-                {/* Search */}
+              <div className="p-5 space-y-6">
+                {/* Tìm kiếm */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
                     Tìm kiếm bác sĩ
                   </label>
                   <div className="relative">
                     <input
-                      type="text"
-                      placeholder="Nhập tên bác sĩ..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
+                      placeholder="Nhập tên bác sĩ…"
+                      className="h-10 w-full rounded-lg bg-white pl-9 pr-3 text-sm ring-1 ring-slate-200 focus:outline-none focus:ring-2 focus:ring-teal-300"
                     />
                     <svg
-                      className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 transform -translate-y-1/2"
+                      className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400"
+                      viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
-                      viewBox="0 0 24 24"
                     >
                       <path
+                        strokeWidth="2"
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                        d="M21 21l-5.2-5.2M16 10a6 6 0 11-12 0 6 6 0 0112 0z"
                       />
                     </svg>
                   </div>
                 </div>
 
-                {/* Specialty Filter */}
+                {/* Chuyên khoa */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
                     Chuyên khoa
                   </label>
-                  <div className="space-y-2 max-h-48 overflow-y-auto">
-                    <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors duration-200">
+                  <div className="max-h-48 space-y-1 overflow-y-auto pr-1">
+                    <label className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50">
                       <input
                         type="radio"
                         name="specialty"
                         value=""
                         checked={selected === ""}
                         onChange={() => setParams({})}
-                        className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                        className="h-4 w-4 accent-teal-600"
                       />
-                      <span className="text-gray-700">Tất cả chuyên khoa</span>
+                      <span className="text-sm text-slate-700">
+                        Tất cả chuyên khoa
+                      </span>
                     </label>
-                    {specialties.map((specialty) => (
+                    {specialties.map((sp) => (
                       <label
-                        key={specialty._id}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors duration-200"
+                        key={sp._id}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
                       >
                         <input
                           type="radio"
                           name="specialty"
-                          value={specialty._id}
-                          checked={selected === specialty._id}
-                          onChange={() =>
-                            setParams({ specialty: specialty._id })
-                          }
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                          value={sp._id}
+                          checked={selected === sp._id}
+                          onChange={() => setParams({ specialty: sp._id })}
+                          className="h-4 w-4 accent-teal-600"
                         />
-                        <span className="text-gray-700">{specialty.name}</span>
+                        <span className="text-sm text-slate-700">
+                          {sp.name}
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                {/* Experience Filter */}
+                {/* Kinh nghiệm */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
                     Kinh nghiệm
                   </label>
-                  <div className="space-y-2">
-                    {experienceRanges.map((range) => (
+                  <div className="space-y-1">
+                    {[
+                      { value: "", label: "Tất cả kinh nghiệm" },
+                      { value: "0-5", label: "0–5 năm" },
+                      { value: "6-10", label: "6–10 năm" },
+                      { value: "11-15", label: "11–15 năm" },
+                      { value: "16-20", label: "16–20 năm" },
+                      { value: "21", label: "Trên 20 năm" },
+                    ].map((r) => (
                       <label
-                        key={range.value}
-                        className="flex items-center gap-3 p-2 rounded-lg hover:bg-blue-50 cursor-pointer transition-colors duration-200"
+                        key={r.value}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-slate-50"
                       >
                         <input
                           type="radio"
                           name="experience"
-                          value={range.value}
-                          checked={experienceFilter === range.value}
+                          value={r.value}
+                          checked={experienceFilter === r.value}
                           onChange={(e) => setExperienceFilter(e.target.value)}
-                          className="w-4 h-4 text-blue-600 focus:ring-blue-500"
+                          className="h-4 w-4 accent-teal-600"
                         />
-                        <span className="text-gray-700">{range.label}</span>
+                        <span className="text-sm text-slate-700">
+                          {r.label}
+                        </span>
                       </label>
                     ))}
                   </div>
                 </div>
 
-                {/* Clear Filters */}
+                {/* Clear */}
                 <button
                   onClick={() => {
                     setSearchQuery("");
@@ -234,255 +251,140 @@ export default function DoctorsPage() {
                     setSortBy("name");
                     setParams({});
                   }}
-                  className="w-full py-3 px-4 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl transition-colors duration-200 font-medium"
+                  className="w-full rounded-lg bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                 >
                   Xóa bộ lọc
                 </button>
               </div>
             </div>
-          </div>
+          </aside>
 
-          {/* Main Content */}
-          <div className="flex-1">
-            {/* Header with results and sort */}
-            <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 mb-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h1 className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent">
-                    Đội ngũ bác sĩ
-                  </h1>
-                  <p className="text-gray-600 mt-1">
-                    Tìm thấy {filteredDoctors.length} bác sĩ
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700">
-                    Sắp xếp:
-                  </span>
-                  <select
-                    value={sortBy}
-                    onChange={(e) => setSortBy(e.target.value)}
-                    className="border-2 border-gray-200 rounded-xl px-4 py-2 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all duration-200"
-                  >
-                    {sortOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Loading State */}
+          {/* Danh sách bác sĩ */}
+          <main className="flex-1">
             {loading && (
-              <div className="flex justify-center items-center py-16">
-                <div className="bg-white rounded-xl shadow-sm border border-blue-100 px-8 py-6">
+              <div className="flex items-center justify-center py-16">
+                <div className="rounded-lg bg-white/80 px-6 py-4 ring-1 ring-slate-200">
                   <div className="flex items-center gap-3">
-                    <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                    <span className="text-blue-600 font-medium">
-                      Đang tải...
-                    </span>
+                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
+                    <span className="text-slate-700">Đang tải…</span>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Error State */}
             {error && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-                <p className="text-red-700">{error}</p>
+              <div className="mb-6 rounded-lg bg-rose-50 p-4 text-rose-700 ring-1 ring-rose-200">
+                {error}
               </div>
             )}
 
-            {/* Doctors List */}
-            <div className="space-y-4">
-              {filteredDoctors.map((doctor) => (
-                <div
-                  key={doctor._id}
-                  className="bg-white rounded-2xl shadow-sm border border-blue-100 p-6 hover:shadow-lg hover:border-blue-300 transition-all duration-300"
-                >
-                  <div className="flex flex-col md:flex-row gap-6">
-                    {/* Doctor Avatar */}
-                    <div className="flex-shrink-0">
-                      {doctor.avatar ? (
-                        <img
-                          src={doctor.avatar}
-                          alt={doctor.name}
-                          className="w-24 h-24 md:w-28 md:h-28 rounded-2xl object-cover border-4 border-blue-100"
-                        />
-                      ) : (
-                        <div className="w-24 h-24 md:w-28 md:h-28 rounded-2xl bg-gradient-to-br from-blue-100 to-teal-100 border-4 border-blue-200 flex items-center justify-center">
-                          <svg
-                            className="w-12 h-12 text-blue-500"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Doctor Info */}
-                    <div className="flex-1">
-                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-                        <div className="flex-1">
-                          <h3 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-teal-500 bg-clip-text text-transparent mb-2">
-                            BS.{doctor.name}
-                          </h3>
-
-                          <div className="space-y-2 mb-4">
-                            {doctor.workplace && (
-                              <div className="flex items-center gap-2 text-gray-600">
+            {!loading && !error && (
+              <>
+                {filteredDoctors.length === 0 ? (
+                  <div className="mx-auto max-w-md rounded-xl bg-white/80 p-8 text-center text-slate-600 ring-1 ring-slate-200">
+                    Không tìm thấy bác sĩ phù hợp tiêu chí.
+                  </div>
+                ) : (
+                  <ul className="space-y-4">
+                    {filteredDoctors.map((d) => (
+                      <li
+                        key={d._id}
+                        className="rounded-xl bg-white/80 p-5 ring-1 ring-slate-200 transition hover:shadow-sm"
+                      >
+                        <div className="flex flex-col gap-5 md:flex-row">
+                          {/* Avatar */}
+                          <div className="shrink-0">
+                            {d.avatar ? (
+                              <img
+                                src={d.avatar}
+                                alt={d.name}
+                                className="h-24 w-24 rounded-xl object-cover ring-1 ring-slate-200"
+                              />
+                            ) : (
+                              <div className="flex h-24 w-24 items-center justify-center rounded-xl bg-slate-100 text-slate-500 ring-1 ring-slate-200">
                                 <svg
-                                  className="w-4 h-4"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  viewBox="0 0 24 24"
+                                  className="h-10 w-10"
+                                  viewBox="0 0 20 20"
+                                  fill="currentColor"
                                 >
                                   <path
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                    strokeWidth={2}
-                                    d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"
+                                    fillRule="evenodd"
+                                    d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
+                                    clipRule="evenodd"
                                   />
                                 </svg>
-                                <span>{doctor.workplace}</span>
-                              </div>
-                            )}
-
-                            <div className="flex items-center gap-2 text-gray-600">
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                                />
-                              </svg>
-                              <span>
-                                Kinh nghiệm: {doctor.experience || 0} năm
-                              </span>
-                            </div>
-
-                            {doctor.rating && (
-                              <div className="flex items-center gap-2">
-                                <div className="flex items-center gap-1">
-                                  {[...Array(5)].map((_, i) => (
-                                    <svg
-                                      key={i}
-                                      className={`w-4 h-4 ${
-                                        i < Math.floor(doctor.rating || 0)
-                                          ? "text-yellow-400"
-                                          : "text-gray-300"
-                                      }`}
-                                      fill="currentColor"
-                                      viewBox="0 0 20 20"
-                                    >
-                                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                                    </svg>
-                                  ))}
-                                </div>
-                                <span className="text-sm text-gray-600">
-                                  ({doctor.rating}/5)
-                                </span>
                               </div>
                             )}
                           </div>
 
-                          {doctor.specialties &&
-                            doctor.specialties.length > 0 && (
-                              <div className="flex flex-wrap gap-2 mb-4">
-                                {doctor.specialties
-                                  .slice(0, 3)
-                                  .map((specialty, idx) => (
-                                    <span
-                                      key={idx}
-                                      className="px-3 py-1 bg-gradient-to-r from-blue-50 to-teal-50 border border-blue-200 text-blue-700 rounded-lg text-sm font-medium"
-                                    >
-                                      {specialty}
-                                    </span>
-                                  ))}
-                                {doctor.specialties.length > 3 && (
-                                  <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-lg text-sm">
-                                    +{doctor.specialties.length - 3} khác
+                          {/* Info */}
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                              <div>
+                                <h3 className="truncate text-xl font-semibold text-slate-900">
+                                  BS. {d.name}
+                                </h3>
+                                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-600">
+                                  {d.workplace && <span>{d.workplace}</span>}
+                                  <span>
+                                    • Kinh nghiệm: {d.experience || 0} năm
                                   </span>
+                                  {typeof d.rating === "number" && (
+                                    <span>• Đánh giá: {d.rating}/5</span>
+                                  )}
+                                  {typeof d.consultationCount === "number" && (
+                                    <span>
+                                      • {d.consultationCount} lượt khám
+                                    </span>
+                                  )}
+                                </div>
+
+                                {d.specialties && d.specialties.length > 0 && (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {d.specialties.slice(0, 4).map((s, i) => (
+                                      <span
+                                        key={i}
+                                        className="rounded-full bg-slate-50 px-2.5 py-1 text-xs text-slate-700 ring-1 ring-slate-200"
+                                      >
+                                        {s}
+                                      </span>
+                                    ))}
+                                    {d.specialties.length > 4 && (
+                                      <span className="rounded-full bg-white px-2.5 py-1 text-xs text-slate-600 ring-1 ring-slate-200">
+                                        +{d.specialties.length - 4} nữa
+                                      </span>
+                                    )}
+                                  </div>
                                 )}
                               </div>
-                            )}
-                        </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex flex-col gap-3 md:ml-4">
-                          <Link
-                            to={`/doctors/${doctor._id}`}
-                            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white rounded-xl transition-all duration-200 text-center font-medium"
-                          >
-                            XEM CHI TIẾT
-                          </Link>
-                          <button className="px-6 py-3 bg-gradient-to-r from-teal-500 to-teal-600 hover:from-teal-600 hover:to-teal-700 text-white rounded-xl transition-all duration-200 font-medium flex items-center justify-center gap-2">
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-                              />
-                            </svg>
-                            ĐẶT LỊCH KHÁM
-                          </button>
+                              {/* Actions */}
+                              <div className="flex gap-2 md:ml-4">
+                                <Link
+                                  to={`/alldoctors/${d._id}`}
+                                  className="inline-flex h-10 items-center justify-center rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                                  title="Xem chi tiết"
+                                >
+                                  Xem chi tiết
+                                </Link>
+                                <Link
+                                  to={`/appointment?doctorId=${d._id}`}
+                                  className="inline-flex h-10 items-center justify-center rounded-lg bg-gradient-to-r from-blue-500 to-teal-400 px-3 text-sm font-medium text-white hover:bg-teal-700"
+                                  title="Đặt lịch khám"
+                                >
+                                  Đặt lịch
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Empty State */}
-            {!loading && !error && filteredDoctors.length === 0 && (
-              <div className="text-center py-16">
-                <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-8 max-w-md mx-auto">
-                  <div className="w-16 h-16 bg-gradient-to-br from-blue-100 to-teal-100 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-blue-500"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-                      />
-                    </svg>
-                  </div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    Không tìm thấy bác sĩ
-                  </h3>
-                  <p className="text-gray-600">
-                    Không có bác sĩ nào phù hợp với tiêu chí tìm kiếm của bạn.
-                  </p>
-                </div>
-              </div>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
-          </div>
+          </main>
         </div>
       </div>
     </div>

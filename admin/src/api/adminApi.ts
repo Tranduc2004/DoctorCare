@@ -307,6 +307,7 @@ export const adminUpdateAppointmentStatus = async (
   id: string,
   status:
     | "pending"
+    | "doctor_reschedule"
     | "confirmed"
     | "examining"
     | "prescribing"
@@ -326,4 +327,32 @@ export const adminDeleteAppointment = async (token: string, id: string) => {
 
 export const adminGetAppointmentStats = async (token: string) => {
   return axios.get(`${API_URL}/admin/appointments/stats`, authHeader(token));
+};
+
+// Admin: Insurance verification APIs
+export const adminGetInsuranceVerifications = async (
+  token: string,
+  status?: "pending" | "approved" | "rejected"
+) => {
+  const qs = status ? `?status=${status}` : "";
+  return axios.get(`${API_URL}/admin/insurance${qs}`, authHeader(token));
+};
+
+export const adminVerifyInsurance = async (
+  token: string,
+  id: string,
+  data: {
+    verificationStatus: "approved" | "rejected";
+    rejectionReason?: string;
+  }
+) => {
+  return axios.put(
+    `${API_URL}/admin/insurance/${id}/verify`,
+    data,
+    authHeader(token)
+  );
+};
+
+export const adminGetInsuranceById = async (token: string, id: string) => {
+  return axios.get(`${API_URL}/admin/insurance/${id}`, authHeader(token));
 };

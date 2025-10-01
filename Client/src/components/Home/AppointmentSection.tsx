@@ -7,11 +7,31 @@ import { useAuth } from "../../contexts/AuthContext";
 import {
   createAppointment,
   getDoctorSchedules,
-  getMyAppointments,
+  type CreateAppointmentParams,
 } from "../../api/appointmentApi";
 import { toast } from "react-toastify";
 import { getDoctors } from "../../api/doctorsApi";
 import { specialtyApi } from "../../api/specialtyApi";
+import {
+  FaHeartbeat,
+  FaStethoscope,
+  FaUserMd,
+  FaNotesMedical,
+  FaBrain,
+} from "react-icons/fa";
+import { MdQuestionMark } from "react-icons/md";
+
+// Small helper to extract error messages from different error shapes
+function getErrMsg(err: unknown, fallback = "Lỗi xảy ra") {
+  if (!err) return fallback;
+  if (typeof err === "string") return err;
+  if (typeof err === "object" && err !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const anyErr = err as any;
+    return anyErr?.response?.data?.message || anyErr?.message || fallback;
+  }
+  return fallback;
+}
 
 /* =================== Local Types =================== */
 type Schedule = {
@@ -46,6 +66,53 @@ interface Doctor {
   description?: string;
   consultationFee?: number;
 }
+
+/* Small service type used by BookingForm elsewhere */
+type ServiceType =
+  | "KHAM_TONG_QUAT"
+  | "KHAM_CHUYEN_KHOA"
+  | "GOI_DINH_KY"
+  | "TU_VAN_DINH_DUONG"
+  | "TU_VAN_TAM_LY";
+
+const SERVICE_OPTIONS: { value: ServiceType; label: string }[] = [
+  { value: "KHAM_CHUYEN_KHOA", label: "Khám chuyên khoa" },
+  { value: "KHAM_TONG_QUAT", label: "Khám tổng quát" },
+  { value: "GOI_DINH_KY", label: "Gói định kỳ" },
+  { value: "TU_VAN_DINH_DUONG", label: "Tư vấn dinh dưỡng" },
+  { value: "TU_VAN_TAM_LY", label: "Tư vấn tâm lý" },
+];
+
+const serviceMeta: Record<
+  ServiceType,
+  { label: string; desc: string; icon: JSX.Element }
+> = {
+  KHAM_TONG_QUAT: {
+    label: "Khám tổng quát (30' – 200k)",
+    desc: "BS đa khoa/nội tổng quát. Không cần chọn khoa.",
+    icon: <FaStethoscope className="text-xl" />,
+  },
+  KHAM_CHUYEN_KHOA: {
+    label: "Khám chuyên khoa (45' – 300k)",
+    desc: "Bắt buộc chọn chuyên khoa; có thể để hệ thống gợi ý bác sĩ.",
+    icon: <FaUserMd className="text-xl" />,
+  },
+  GOI_DINH_KY: {
+    label: "Khám sức khỏe định kỳ (gói) (60' – 500k)",
+    desc: "Nhiều bước: điều dưỡng, KTV, BS tổng quát kết luận.",
+    icon: <FaHeartbeat className="text-xl" />,
+  },
+  TU_VAN_DINH_DUONG: {
+    label: "Tư vấn dinh dưỡng (30' – 150k)",
+    desc: "Chuyên gia/bác sĩ dinh dưỡng. Không cần chọn khoa.",
+    icon: <FaNotesMedical className="text-xl" />,
+  },
+  TU_VAN_TAM_LY: {
+    label: "Tư vấn tâm lý (45' – 250k)",
+    desc: "Nhà tâm lý hoặc bác sĩ tâm thần. Không cần chọn khoa.",
+    icon: <FaBrain className="text-xl" />,
+  },
+};
 
 /* =================== Driver Singleton =================== */
 declare global {
@@ -111,6 +178,14 @@ export default function AppointmentSection(): JSX.Element {
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [doctorId, setDoctorId] = useState<string>("");
+
+  // service & patient info (default to specialist visit)
+  const [serviceType, setServiceType] =
+    useState<ServiceType>("KHAM_CHUYEN_KHOA");
+  const [fullName, setFullName] = useState<string>(user?.name || "");
+  const [phone, setPhone] = useState<string>(user?.phone || "");
+  const [email, setEmail] = useState<string>(user?.email || "");
+  const [mode, setMode] = useState<"online" | "offline">("offline");
   const [date, setDate] = useState<string>("");
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
@@ -132,6 +207,7 @@ export default function AppointmentSection(): JSX.Element {
   const isTourRunningRef = useRef<boolean>(false);
 
   /* ===== Helpers ===== */
+
   const ensureDriver = (): Driver => {
     if (window.__appointmentDriver) {
       driverRef.current = window.__appointmentDriver;
@@ -270,6 +346,12 @@ export default function AppointmentSection(): JSX.Element {
     const [eh, em] = schedule.endTime.split(":").map((n) => parseInt(n, 10));
     const start = sh * 60 + sm;
     const end = eh * 60 + em;
+
+    // Get current time for today's validation
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    const currentTime = now.getHours() * 60 + now.getMinutes();
+
     for (let m = start; m < end; m += 30) {
       const h1 = Math.floor(m / 60),
         m1 = m % 60;
@@ -281,6 +363,12 @@ export default function AppointmentSection(): JSX.Element {
       const t2 = `${h2.toString().padStart(2, "0")}:${m2
         .toString()
         .padStart(2, "0")}`;
+
+      // Skip past time slots for today
+      if (schedule.date === today && m < currentTime) {
+        continue;
+      }
+
       slots.push({
         scheduleId: schedule._id,
         date: schedule.date,
@@ -298,6 +386,7 @@ export default function AppointmentSection(): JSX.Element {
   };
 
   /* ===== Effects ===== */
+
   // Load specialties
   useEffect(() => {
     (async () => {
@@ -321,11 +410,65 @@ export default function AppointmentSection(): JSX.Element {
         }
         const data = await getDoctors(selectedSpecialtyId);
         setDoctors(Array.isArray(data) ? data : []);
-      } catch (e: any) {
-        toast.error(e?.response?.data?.message || "Không tải được bác sĩ");
+      } catch (err: unknown) {
+        toast.error(getErrMsg(err, "Không tải được bác sĩ"));
       }
     })();
   }, [selectedSpecialtyId]);
+
+  // Auto-select specialty based on service type
+  useEffect(() => {
+    const findBy = (regex: RegExp) =>
+      specialties.find((s) => regex.test(s.name));
+
+    if (serviceType === "KHAM_TONG_QUAT") {
+      const internal = findBy(/nội|đa khoa|internal|general/i);
+      if (internal) {
+        setSelectedSpecialtyId(internal._id);
+        setDoctorId("");
+        setSchedules([]);
+        setSelectedTimeSlot(null);
+      }
+    } else if (serviceType === "TU_VAN_DINH_DUONG") {
+      const nutri = findBy(/dinh dưỡng|nutrition/i);
+      if (nutri) {
+        setSelectedSpecialtyId(nutri._id);
+        setDoctorId("");
+        setSchedules([]);
+        setSelectedTimeSlot(null);
+      }
+    } else if (serviceType === "TU_VAN_TAM_LY") {
+      const psych = findBy(/tâm lý|tâm thần|psych/i);
+      if (psych) {
+        setSelectedSpecialtyId(psych._id);
+        setDoctorId("");
+        setSchedules([]);
+        setSelectedTimeSlot(null);
+      }
+    } else if (serviceType === "GOI_DINH_KY") {
+      const internal = findBy(/nội|đa khoa|internal|general/i);
+      if (internal) {
+        setSelectedSpecialtyId(internal._id);
+        setDoctorId("");
+        setSchedules([]);
+        setSelectedTimeSlot(null);
+      }
+    } else {
+      // For KHAM_CHUYEN_KHOA, reset to allow manual selection
+      setSelectedSpecialtyId("");
+      setDoctorId("");
+      setSchedules([]);
+      setSelectedTimeSlot(null);
+    }
+  }, [serviceType, specialties]);
+
+  // For non-specialist services, auto-assign the first available doctor
+  useEffect(() => {
+    if (serviceType === "KHAM_CHUYEN_KHOA") return;
+    if (!doctorId && doctors && doctors.length > 0) {
+      setDoctorId(doctors[0]._id);
+    }
+  }, [serviceType, doctors, doctorId]);
 
   // Load schedules theo bác sĩ
   useEffect(() => {
@@ -336,13 +479,20 @@ export default function AppointmentSection(): JSX.Element {
       }
       try {
         setLoading(true);
+        console.log("Loading schedules for doctor:", doctorId);
         const data = await getDoctorSchedules(doctorId);
+        const today = new Date().toISOString().split("T")[0];
         const available = (data || []).filter(
-          (s: Schedule) => s.status === "accepted" && !s.isBooked
+          (s: Schedule) =>
+            s.status === "accepted" &&
+            !s.isBooked &&
+            Boolean(s.date) &&
+            s.date >= today
         );
         setSchedules(available);
-      } catch (e: any) {
-        toast.error(e?.response?.data?.message || "Không tải được lịch bác sĩ");
+      } catch (err: unknown) {
+        console.error("Error loading schedules:", err);
+        toast.error(getErrMsg(err, "Không tải được lịch bác sĩ"));
       } finally {
         setLoading(false);
       }
@@ -364,11 +514,7 @@ export default function AppointmentSection(): JSX.Element {
       helpBtn.type = "button";
       helpBtn.setAttribute("aria-label", "Xem hướng dẫn đặt lịch");
       helpBtn.innerHTML = `<span class="flex items-center gap-2">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <circle cx="12" cy="12" r="10"></circle>
-          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
-          <line x1="12" y1="17" x2="12.01" y2="17"></line>
-        </svg>
+        <MdQuestionMark />
         Xem hướng dẫn
       </span>`;
       helpBtn.className =
@@ -398,8 +544,23 @@ export default function AppointmentSection(): JSX.Element {
   // ===== Derived slots =====
   const availableTimeSlots = useMemo<TimeSlot[]>(() => {
     let all: TimeSlot[] = [];
-    for (const s of schedules) all = all.concat(generateTimeSlots(s));
-    if (date) all = all.filter((slot) => slot.date === date);
+
+    // Get today's date in YYYY-MM-DD format
+    const today = new Date().toISOString().split("T")[0];
+
+    for (const s of schedules) {
+      // Only process schedules from today onwards
+      if (s.date >= today) {
+        const slots = generateTimeSlots(s);
+        all = all.concat(slots);
+      }
+    }
+
+    if (date) {
+      console.log("Filtering by date:", date);
+      all = all.filter((slot) => slot.date === date);
+    }
+
     all.sort((a, b) =>
       a.date !== b.date
         ? a.date.localeCompare(b.date)
@@ -421,20 +582,51 @@ export default function AppointmentSection(): JSX.Element {
     }
     try {
       setLoading(true);
-      await createAppointment({
+
+      const finalNote = [
+        `[Dịch vụ] ${serviceMeta[serviceType].label}`,
+        serviceType === "GOI_DINH_KY"
+          ? "Gợi ý: tạo nhiều sub-appointments (mock)"
+          : undefined,
+        note?.trim() || undefined,
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      const payload: Parameters<typeof createAppointment>[0] = {
         patientId: user._id,
         doctorId,
-        scheduleId: selectedTimeSlot.scheduleId,
+        scheduleId: selectedTimeSlot!.scheduleId,
         symptoms,
-        note,
-        appointmentTime: selectedTimeSlot.time,
-      });
+        note: finalNote,
+        appointmentTime: selectedTimeSlot!.time,
+        mode,
+      };
+      // include optional patientInfo and serviceType when available
+      (payload as any).patientInfo = { name: fullName, phone, email };
+      (payload as any).serviceType = serviceType;
+      const resp = await createAppointment(payload);
+
+      const appointment = resp?.data;
+      const holdExpiresAt = resp?.holdExpiresAt;
+      if (holdExpiresAt && appointment && appointment._id) {
+        const holdMinutes = Math.max(
+          1,
+          Math.round((new Date(holdExpiresAt).getTime() - Date.now()) / 60000)
+        );
+        toast.success(
+          `Đặt lịch giữ chỗ ${holdMinutes} phút. Chuyển tới thanh toán.`
+        );
+        window.location.href = `/payments/${appointment._id}`;
+        return;
+      }
+
       toast.success("Đặt lịch thành công! Đang chờ xác nhận");
       setSelectedTimeSlot(null);
       setSymptoms("");
       setNote("");
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || "Đặt lịch thất bại");
+    } catch (err: unknown) {
+      toast.error(getErrMsg(err, "Đặt lịch thất bại"));
     } finally {
       setLoading(false);
     }
@@ -507,201 +699,400 @@ export default function AppointmentSection(): JSX.Element {
 
           {/* Form */}
           <div className="bg-white p-6 rounded-lg shadow-lg">
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <h3 className="text-2xl font-semibold text-gray-800 mb-4">
-                Đặt lịch khám
-              </h3>
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <div className="text-center mb-6">
+                <h3 className="text-2xl font-bold bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500 bg-clip-text text-transparent">
+                  Đặt lịch khám
+                </h3>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Chuyên khoa */}
-                <div>
+                <p className="text-gray-600 text-sm">
+                  Vui lòng điền thông tin để đặt lịch khám bệnh
+                </p>
+              </div>
+
+              {/* Step 1: Service & Patient Info */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-xl border border-blue-100">
+                <h4 className="text-xl font-semibold text-gray-800 mb-6 flex items-center">
+                  <span className="bg-blue-500  text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">
+                    1
+                  </span>
+                  Thông tin cơ bản
+                </h4>
+
+                {/* Service Type */}
+                <div className="mb-6">
                   <label
-                    htmlFor="specialty-select"
-                    className="block text-gray-700 mb-1"
+                    htmlFor="service-select"
+                    className="block text-gray-700 mb-2 text-sm font-medium"
                   >
-                    Chuyên khoa
+                    Dịch vụ khám
                   </label>
                   <select
-                    id="specialty-select"
-                    value={selectedSpecialtyId}
-                    onChange={(e) => {
-                      const specialtyId = e.target.value;
-                      setSelectedSpecialtyId(specialtyId);
-                      setDoctorId("");
-                      setSchedules([]);
-                      setSelectedTimeSlot(null);
-                    }}
-                    className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    aria-describedby="specialty-help"
+                    id="service-select"
+                    value={serviceType}
+                    onChange={(e) =>
+                      setServiceType(e.target.value as ServiceType)
+                    }
+                    className=" text-black w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base bg-white shadow-sm transition-all duration-200"
                   >
-                    <option value="">-- Chọn chuyên khoa --</option>
-                    {specialties
-                      .filter((sp) => sp.isActive)
-                      .map((sp) => (
-                        <option key={sp._id} value={sp._id}>
-                          {sp.name}
-                        </option>
-                      ))}
-                  </select>
-                  <p id="specialty-help" className="sr-only">
-                    Chọn chuyên khoa trước để hiện danh sách bác sĩ
-                  </p>
-                </div>
-
-                {/* Bác sĩ */}
-                <div>
-                  <label
-                    htmlFor="doctor-select"
-                    className="block text-gray-700 mb-1"
-                  >
-                    Bác sĩ
-                  </label>
-                  <select
-                    id="doctor-select"
-                    value={doctorId}
-                    onChange={(e) => setDoctorId(e.target.value)}
-                    className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    disabled={!selectedSpecialtyId}
-                  >
-                    <option value="">-- Chọn bác sĩ --</option>
-                    {doctors.map((d) => {
-                      const specialtyName = getSpecialtyName(d.specialty || "");
-                      const doctorInfo = [
-                        d.name,
-                        specialtyName,
-                        d.workplace,
-                        d.experience ? `${d.experience} năm kinh nghiệm` : "",
-                      ]
-                        .filter(Boolean)
-                        .join(" - ");
-                      return (
-                        <option key={d._id} value={d._id}>
-                          {doctorInfo}
-                        </option>
-                      );
-                    })}
+                    {SERVICE_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                {/* Ngày khám */}
-                <div>
-                  <label
-                    htmlFor="date-select"
-                    className="block text-gray-700 mb-1"
-                  >
-                    Ngày khám
+                {/* Mode Selection */}
+                <div className="mb-6">
+                  <label className="block text-gray-700 mb-3 text-sm font-medium">
+                    Hình thức khám
                   </label>
-                  <input
-                    id="date-select"
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-4 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
+                  <div className="flex items-center gap-8 text-black">
+                    <label className="inline-flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="mode"
+                        value="offline"
+                        checked={mode === "offline"}
+                        onChange={() => setMode("offline")}
+                        className="mr-2 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Tại phòng khám</span>
+                    </label>
+                    <label className="inline-flex items-center cursor-pointer">
+                      <input
+                        type="radio"
+                        name="mode"
+                        value="online"
+                        checked={mode === "online"}
+                        onChange={() => setMode("online")}
+                        className="mr-2 w-4 h-4 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm">Trực tuyến</span>
+                    </label>
+                  </div>
                 </div>
 
-                {/* Triệu chứng */}
-                <div>
-                  <label
-                    htmlFor="symptoms"
-                    className="block text-gray-700 mb-1"
-                  >
-                    Triệu chứng
-                  </label>
-                  <input
-                    id="symptoms"
-                    type="text"
-                    value={symptoms}
-                    onChange={(e) => setSymptoms(e.target.value)}
-                    className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    placeholder="Ví dụ: sốt, ho, đau đầu..."
-                  />
+                {/* Patient Information */}
+                <div className="space-y-4">
+                  <h5 className="text-sm font-medium text-gray-700 mb-4">
+                    Thông tin bệnh nhân
+                  </h5>
+
+                  <div className="grid grid-cols-2 gap-4 text-black">
+                    {/* Patient name */}
+                    <div>
+                      <label
+                        htmlFor="patient-name"
+                        className="block text-gray-700 mb-2 text-sm "
+                      >
+                        Họ và tên <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="patient-name"
+                        type="text"
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                        placeholder="Nhập họ và tên"
+                      />
+                    </div>
+
+                    {/* Phone */}
+                    <div>
+                      <label
+                        htmlFor="patient-phone"
+                        className="block text-gray-700 mb-2 text-sm"
+                      >
+                        Số điện thoại <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="patient-phone"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="Nhập số điện thoại"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Email - Full width */}
+                  <div>
+                    <label
+                      htmlFor="patient-email"
+                      className="block text-gray-700 mb-2 text-sm"
+                    >
+                      Email
+                    </label>
+                    <input
+                      id="patient-email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm bg-white text-black"
+                      placeholder="Nhập email"
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Khung giờ */}
-              <div>
-                <label className="block text-gray-700 mb-2">
-                  Chọn khung giờ trống (mỗi slot 30 phút)
-                </label>
-                <div className="time-slots-container min-h-[100px] max-h-[200px] overflow-y-auto border border-gray-200 rounded-md p-2">
-                  {loading ? (
-                    <div className="flex items-center justify-center py-8 text-gray-600">
-                      <Loader2
-                        size={18}
-                        className="mr-2 animate-spin"
-                        aria-hidden
-                      />
-                      Đang tải lịch...
-                    </div>
-                  ) : availableTimeSlots.length === 0 ? (
-                    <div className="text-gray-500 text-sm text-center py-8">
-                      {!doctorId
-                        ? "Vui lòng chọn bác sĩ để xem lịch trống"
-                        : "Không có khung giờ phù hợp."}
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                      {availableTimeSlots.map((slot, index) => {
-                        const isSelected =
-                          selectedTimeSlot?.scheduleId === slot.scheduleId &&
-                          selectedTimeSlot?.time === slot.time;
-                        const displayLabel = date
-                          ? slot.displayTime
-                          : `${slot.date} - ${slot.displayTime}`;
+              {/* Step 2: Doctor Selection */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-gray-800 mb-3 flex items-center">
+                  <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">
+                    2
+                  </span>
+                  Chọn bác sĩ
+                </h4>
 
-                        return (
-                          <button
-                            type="button"
-                            key={`${slot.scheduleId}-${slot.time}-${index}`}
-                            onClick={() => setSelectedTimeSlot(slot)}
-                            className={`px-3 py-2 rounded-md border text-sm transition text-left ${
-                              isSelected
-                                ? "bg-teal-500 text-white border-teal-500"
-                                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-                            }`}
-                            aria-pressed={isSelected}
-                          >
-                            {displayLabel}
-                          </button>
-                        );
-                      })}
+                {serviceType === "KHAM_CHUYEN_KHOA" ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Chuyên khoa */}
+                    <div>
+                      <label
+                        htmlFor="specialty-select"
+                        className="block text-gray-700 mb-1 text-sm font-medium"
+                      >
+                        Chuyên khoa
+                      </label>
+                      <select
+                        id="specialty-select"
+                        value={selectedSpecialtyId}
+                        onChange={(e) => {
+                          const specialtyId = e.target.value;
+                          setSelectedSpecialtyId(specialtyId);
+                          setDoctorId("");
+                          setSchedules([]);
+                          setSelectedTimeSlot(null);
+                        }}
+                        className="w-full px-3 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white"
+                        aria-describedby="specialty-help"
+                      >
+                        <option value="">-- Chọn chuyên khoa --</option>
+                        {specialties
+                          .filter((sp) => sp.isActive)
+                          .map((sp) => (
+                            <option key={sp._id} value={sp._id}>
+                              {sp.name}
+                            </option>
+                          ))}
+                      </select>
                     </div>
-                  )}
-                </div>
 
-                {selectedTimeSlot && (
-                  <div className="mt-2 text-sm text-gray-600">
-                    <strong>Đã chọn:</strong> {selectedTimeSlot.date} -{" "}
-                    {selectedTimeSlot.displayTime}
+                    {/* Bác sĩ */}
+                    <div>
+                      <label
+                        htmlFor="doctor-select"
+                        className="block text-gray-700 mb-1 text-sm font-medium"
+                      >
+                        Bác sĩ
+                      </label>
+                      <select
+                        id="doctor-select"
+                        value={doctorId}
+                        onChange={(e) => setDoctorId(e.target.value)}
+                        className="w-full px-3 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white"
+                        disabled={!selectedSpecialtyId}
+                      >
+                        <option value="">
+                          {selectedSpecialtyId
+                            ? "-- Chọn bác sĩ --"
+                            : "Vui lòng chọn chuyên khoa trước"}
+                        </option>
+                        {doctors.map((d) => {
+                          const specialtyName = getSpecialtyName(
+                            d.specialty || ""
+                          );
+                          const doctorInfo = [
+                            d.name,
+                            specialtyName,
+                            d.workplace,
+                            d.experience
+                              ? `${d.experience} năm kinh nghiệm`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" - ");
+                          return (
+                            <option key={d._id} value={d._id}>
+                              {doctorInfo}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
                   </div>
+                ) : (
+                  /* Thông tin bác sĩ được chọn tự động cho các dịch vụ không phải chuyên khoa */
+                  doctorId && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                      <div className="text-sm text-blue-800">
+                        <strong>Bác sĩ được chọn:</strong>{" "}
+                        {doctors.find((d) => d._id === doctorId)?.name ||
+                          "Đang tải..."}
+                      </div>
+                      <div className="text-xs text-blue-600 mt-1">
+                        Chuyên khoa: {getSpecialtyName(selectedSpecialtyId)}
+                      </div>
+                    </div>
+                  )
                 )}
               </div>
 
-              {/* Ghi chú */}
-              <div>
-                <label htmlFor="note" className="block text-gray-700 mb-1">
-                  Ghi chú
-                </label>
-                <textarea
-                  id="note"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full px-4 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  rows={3}
-                  placeholder="Ghi chú thêm (nếu có)"
-                />
+              {/* Step 3: Schedule & Symptoms */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-gray-800 mb-3 flex items-center">
+                  <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">
+                    3
+                  </span>
+                  Lịch khám & triệu chứng
+                </h4>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                  {/* Ngày khám */}
+                  <div>
+                    <label
+                      htmlFor="date-select"
+                      className="block text-gray-700 mb-1 text-sm font-medium"
+                    >
+                      Ngày khám
+                    </label>
+                    <input
+                      id="date-select"
+                      type="date"
+                      value={date}
+                      min={new Date().toISOString().split("T")[0]}
+                      onChange={(e) => setDate(e.target.value)}
+                      className="w-full px-3 text-black py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white"
+                    />
+                  </div>
+
+                  {/* Triệu chứng */}
+                  <div>
+                    <label
+                      htmlFor="symptoms"
+                      className="block text-gray-700 mb-1 text-sm font-medium"
+                    >
+                      Triệu chứng
+                    </label>
+                    <input
+                      id="symptoms"
+                      type="text"
+                      value={symptoms}
+                      onChange={(e) => setSymptoms(e.target.value)}
+                      className="w-full px-3 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white"
+                      placeholder="Ví dụ: sốt, ho, đau đầu..."
+                    />
+                  </div>
+                </div>
+
+                {/* Khung giờ */}
+                <div>
+                  <label className="block text-gray-700 mb-2 text-sm font-medium">
+                    Chọn khung giờ trống (mỗi slot 30 phút)
+                  </label>
+                  <div className="time-slots-container min-h-[80px] max-h-[150px] overflow-y-auto border border-gray-200 rounded-md p-3 bg-white">
+                    {loading ? (
+                      <div className="flex items-center justify-center py-6 text-gray-600">
+                        <Loader2
+                          size={16}
+                          className="mr-2 animate-spin"
+                          aria-hidden
+                        />
+                        <span className="text-sm">Đang tải lịch...</span>
+                      </div>
+                    ) : availableTimeSlots.length === 0 ? (
+                      <div className="text-gray-500 text-sm text-center py-6">
+                        {!doctorId
+                          ? "Vui lòng chọn bác sĩ để xem lịch trống"
+                          : "Không có khung giờ phù hợp."}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                        {availableTimeSlots.map((slot, index) => {
+                          const isSelected =
+                            selectedTimeSlot?.scheduleId === slot.scheduleId &&
+                            selectedTimeSlot?.time === slot.time;
+                          const displayLabel = date
+                            ? slot.displayTime
+                            : `${slot.date} - ${slot.displayTime}`;
+
+                          return (
+                            <button
+                              type="button"
+                              key={`${slot.scheduleId}-${slot.time}-${index}`}
+                              onClick={() => setSelectedTimeSlot(slot)}
+                              className={`px-2 py-1.5 rounded-md border text-xs transition text-center ${
+                                isSelected
+                                  ? "bg-teal-500 text-white border-teal-500"
+                                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                              }`}
+                              aria-pressed={isSelected}
+                            >
+                              {displayLabel}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {selectedTimeSlot && (
+                    <div className="mt-2 text-sm text-gray-600 bg-green-50 p-2 rounded border border-green-200">
+                      <strong>✓ Đã chọn:</strong> {selectedTimeSlot.date} -{" "}
+                      {selectedTimeSlot.displayTime}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {/* Submit & Hidden Debug Button */}
-              <button
-                id="submit-btn"
-                type="submit"
-                disabled={loading}
-                className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-teal-400 text-white font-medium rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                {loading ? "Đang xử lý..." : "Xác nhận đặt lịch"}
-              </button>
+              {/* Step 4: Additional Notes */}
+              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg">
+                <h4 className="text-lg font-medium text-gray-800 mb-3 flex items-center">
+                  <span className="bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-sm mr-2">
+                    4
+                  </span>
+                  Ghi chú thêm (tùy chọn)
+                </h4>
+                <div>
+                  <label
+                    htmlFor="note"
+                    className="block text-gray-700 mb-1 text-sm font-medium"
+                  >
+                    Ghi chú
+                  </label>
+                  <textarea
+                    id="note"
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full px-3 py-2 border text-black border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm bg-white"
+                    rows={2}
+                    placeholder="Ghi chú thêm (nếu có)"
+                  />
+                </div>
+              </div>
+
+              {/* Submit Button */}
+              <div className="pt-4">
+                <button
+                  id="submit-btn"
+                  type="submit"
+                  disabled={loading}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-teal-400 text-white font-medium rounded-md hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200 text-sm"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center">
+                      <Loader2 size={16} className="mr-2 animate-spin" />
+                      Đang xử lý...
+                    </span>
+                  ) : (
+                    "Xác nhận đặt lịch"
+                  )}
+                </button>
+              </div>
+
               <button
                 id="force-close-tour"
                 type="button"

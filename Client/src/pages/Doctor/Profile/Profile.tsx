@@ -23,9 +23,38 @@ import {
 export default function DoctorProfilePage() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  // Helper to read auth token using same keys as AuthContext/axiosConfig
+  const getAuthToken = () => {
+    try {
+      return (
+        window.sessionStorage.getItem("doctor_token") ??
+        window.localStorage.getItem("doctor_token") ??
+        window.sessionStorage.getItem("token") ??
+        window.localStorage.getItem("token")
+      );
+    } catch {
+      return (
+        window.localStorage.getItem("doctor_token") ??
+        window.localStorage.getItem("token")
+      );
+    }
+  };
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showAvatar, setShowAvatar] = useState(true);
+
+  const getAvatarSrc = (avatar?: string) => {
+    if (!avatar) return "";
+    if (/^https?:\/\//i.test(avatar)) return encodeURI(avatar);
+    try {
+      const base = "http://localhost:5000";
+      const path = avatar.startsWith("/") ? avatar : `/${avatar}`;
+      return base + encodeURI(path);
+    } catch {
+      return avatar;
+    }
+  };
   const [specialties, setSpecialties] = useState<
     { _id: string; name: string }[]
   >([]);
@@ -68,15 +97,28 @@ export default function DoctorProfilePage() {
     // Load latest profile from server
     const loadProfile = async () => {
       try {
+        const token = getAuthToken();
+        if (!token) {
+          // no token -> redirect to login
+          navigate("/doctor/login");
+          return;
+        }
+
         const res = await fetch(
           "http://localhost:5000/api/doctor/auth/profile",
           {
             headers: {
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              Authorization: `Bearer ${token}`,
             },
           }
         );
-        if (res.status === 401) return;
+        if (res.status === 401) {
+          // expired or invalid token
+          localStorage.removeItem("token");
+          toast.error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
+          navigate("/doctor/login");
+          return;
+        }
         const data = await res.json();
         if (data?.success && data?.doctor) {
           const d = data.doctor;
@@ -106,17 +148,21 @@ export default function DoctorProfilePage() {
     };
     loadProfile();
     // Load specialties for mapping id -> name
-    import("../../../api/specialtyApi").then(({ specialtyApi }: any) => {
-      specialtyApi
-        .getActiveSpecialties()
-        .then((data: { _id: string; name: string }[]) =>
-          setSpecialties(data || [])
-        )
-        .catch(() => {
-          // ignore
-        });
-    });
-  }, [user]);
+    import("../../../api/specialtyApi")
+      .then((m: unknown) => {
+        const mod = m as {
+          specialtyApi?: {
+            getActiveSpecialties: () => Promise<
+              { _id: string; name: string }[]
+            >;
+          };
+        };
+        if (!mod.specialtyApi) throw new Error("specialtyApi missing");
+        return mod.specialtyApi.getActiveSpecialties();
+      })
+      .then((data) => setSpecialties(data || []))
+      .catch((err) => console.warn("Failed loading specialties", err));
+  }, [user, navigate]);
 
   const uploadAvatar = async (file: File) => {
     try {
@@ -125,12 +171,19 @@ export default function DoctorProfilePage() {
 
       const data = new FormData();
       data.append("avatar", file);
+      const token = getAuthToken();
+      if (!token) {
+        toast.error("Phiên đăng nhập không hợp lệ. Vui lòng đăng nhập lại.");
+        navigate("/doctor/login");
+        return;
+      }
+
       const res = await fetch(
         "http://localhost:5000/api/doctor/auth/profile/avatar",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
+            Authorization: `Bearer ${token}`,
           },
           body: data,
         }
@@ -152,7 +205,7 @@ export default function DoctorProfilePage() {
             method: "PUT",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer ${localStorage.getItem("token")}`,
+              Authorization: `Bearer ${getAuthToken()}`,
             },
             body: JSON.stringify({ avatar: json.url }),
           }
@@ -167,16 +220,18 @@ export default function DoctorProfilePage() {
               const u = JSON.parse(raw);
               u.avatar = json.url;
               localStorage.setItem("user_doctor", JSON.stringify(u));
-            } catch {}
+            } catch (err) {
+              console.warn("Failed to update user_doctor in localStorage", err);
+            }
           }
-          toast.success("Tải ảnh lên thành công");
         } else {
           setError("Không thể lưu avatar");
         }
       } else {
         setError(json?.message || "Tải ảnh thất bại");
       }
-    } catch {
+    } catch (err) {
+      console.warn("uploadAvatar error", err);
       setError("Không thể tải ảnh");
     } finally {
       setLoading(false);
@@ -193,7 +248,7 @@ export default function DoctorProfilePage() {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
+          Authorization: `Bearer ${getAuthToken()}`,
         },
         body: JSON.stringify(form),
       });
@@ -226,7 +281,9 @@ export default function DoctorProfilePage() {
           updated.description = form.description;
           updated.avatar = form.avatar || u.avatar;
           localStorage.setItem("user_doctor", JSON.stringify(updated));
-        } catch {}
+        } catch (err) {
+          console.warn("Failed to update localStorage user_doctor", err);
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Cập nhật thất bại");
@@ -304,11 +361,12 @@ export default function DoctorProfilePage() {
                 {/* Avatar */}
                 <div className="absolute -top-12 left-6">
                   <div className="relative group cursor-pointer">
-                    {form.avatar ? (
+                    {form.avatar && showAvatar ? (
                       <img
-                        src={form.avatar}
+                        src={getAvatarSrc(form.avatar)}
                         alt="Avatar"
                         className="h-24 w-24 rounded-2xl object-cover border-4 border-white shadow-xl group-hover:shadow-2xl transition-all"
+                        onError={() => setShowAvatar(false)}
                       />
                     ) : (
                       <div className="h-24 w-24 rounded-2xl bg-slate-100 flex items-center justify-center border-4 border-white shadow-xl">

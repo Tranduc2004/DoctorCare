@@ -31,7 +31,10 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@types/axios": "^0.9.36",
     "@types/multer": "^1.4.12",
+    "@types/uuid": "^10.0.0",
+    "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
     "cloudinary": "^2.7.0",
     "cors": "^2.8.5",
@@ -41,6 +44,7 @@
     "mongoose": "^8.14.0",
     "multer": "^2.0.0",
     "nodemailer": "^7.0.6",
-    "streamifier": "^0.1.1"
+    "streamifier": "^0.1.1",
+    "uuid": "^13.0.0"
   }
 }

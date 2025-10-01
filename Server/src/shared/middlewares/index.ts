@@ -1,5 +1,3 @@
 // Shared Middlewares Index
-// TODO: Import shared middlewares
-// export * from './authMiddleware';
-// export * from './validationMiddleware';
-// export * from './errorMiddleware';
+// Note: module-specific middlewares are exported from their own folders (e.g., modules/patient/middlewares).
+// No shared auth middleware is provided at this path.

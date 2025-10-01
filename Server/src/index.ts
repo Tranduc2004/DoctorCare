@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
+import http from "http";
+import { initSocket } from "./utils/socket";
+import { startExpiredInvoiceMonitor } from "./utils/markExpiredInvoices";
 
 // Import modules
 import adminRoutes from "./modules/admin/routes";
@@ -10,14 +13,17 @@ import patientRoutes from "./modules/patient/routes";
 import doctorRoutes from "./modules/doctor/routes";
 import {
   specialtyRoutes,
+  serviceRoutes,
   authRoutes,
   messageRoutes,
 } from "./modules/shared/routes";
+import pricingRoutes from "./modules/pricing/routes/pricingRoutes";
 import { verifyEmailTransport } from "./shared/utils";
 
 dotenv.config();
 
 const app = express();
+const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Middleware
@@ -35,8 +41,13 @@ app.use("/api/doctor", doctorRoutes);
 
 // Shared routes (công khai)
 app.use("/api/specialties", specialtyRoutes);
+app.use("/api/services", serviceRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/messages", messageRoutes);
+// Notifications
+import { default as notificationRoutes } from "./modules/shared/routes/notifications";
+app.use("/api/notifications", notificationRoutes);
+app.use("/api/pricing", pricingRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
@@ -66,13 +77,28 @@ mongoose
   .then(async () => {
     console.log("Kết nối MongoDB thành công!");
 
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
       console.log(`Server đang chạy tại http://localhost:${PORT}`);
       console.log(`Admin Auth: http://localhost:${PORT}/api/admin/auth`);
       console.log(`Patient Auth: http://localhost:${PORT}/api/patient/auth`);
       console.log(`Doctor Auth: http://localhost:${PORT}/api/doctor/auth`);
       console.log(`Shared Auth: http://localhost:${PORT}/api/auth`);
     });
+
+    // initialize socket.io
+    try {
+      initSocket(server);
+      console.log("Socket.IO initialized");
+    } catch (err) {
+      console.error("Socket init failed", err);
+    }
+
+    // Start background monitor to mark expired invoices and release holds
+    try {
+      startExpiredInvoiceMonitor();
+    } catch (e) {
+      console.error("Failed to start expired invoice monitor", e);
+    }
 
     // Kiểm tra mailer (không chặn server nếu lỗi)
     verifyEmailTransport().catch(() => {});

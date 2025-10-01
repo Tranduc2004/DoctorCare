@@ -1,5 +1,5 @@
 import mongoose, { Document, Schema } from "mongoose";
-import bcrypt from "bcryptjs";
+import * as bcrypt from "bcryptjs";
 
 export interface IDoctor extends Document {
   name: string;
@@ -29,7 +29,8 @@ const DoctorSchema: Schema = new Schema(
     specialty: { type: String, required: true },
     experience: { type: Number },
     workplace: { type: String },
-    license: { type: String, required: true },
+    // license is optional at initial registration; admin can request later if missing
+    license: { type: String, required: false },
     description: { type: String },
     avatar: { type: String },
     education: [{ type: String }],

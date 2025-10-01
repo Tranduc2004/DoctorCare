@@ -1,124 +1,90 @@
-1. Luồng tổng quan đặt lịch khám
+COMPILOT LUÔN PHẢN HỒI BẰNG TIẾNG VIỆT
+2.2. Luồng Đặt Lịch và Thanh Toán (Phía Bệnh Nhân)
+Đây là luồng quan trọng nhất, đảm bảo không có lịch hẹn "ảo" và tối ưu hóa thời gian của bác sĩ.
 
-Bác sĩ tạo lịch trống (availability/schedule).
+Bệnh nhân Tìm và Chọn Lịch:
 
-Bệnh nhân chọn khung giờ còn trống → gửi yêu cầu đặt lịch.
+Bệnh nhân chọn hình thức khám: OFFLINE (Tại phòng khám) hoặc ONLINE (Trực tuyến).
 
-Backend kiểm tra trùng lịch → tạo record appointment (status = pending).
+Bệnh nhân tìm kiếm theo chuyên khoa, bác sĩ hoặc dịch vụ.
 
-Bác sĩ xác nhận (hoặc auto-confirm).
+Hệ thống hiển thị các khung giờ có trạng thái AVAILABLE của các bác sĩ phù hợp.
 
-Bệnh nhân nhận thông báo (email/notification).
+Tạo Đơn Hẹn và Tạm Giữ:
 
-Đến giờ hẹn → join phòng chat/video.
+Khi bệnh nhân chọn một khung giờ, hệ thống sẽ tạo một lịch hẹn tạm thời với trạng thái PENDING_PAYMENT (Chờ thanh toán).
 
-2. Database cần có
-   Bảng users (chung cho cả admin, doctor, patient)
-   {
-   id: string,
-   role: "admin" | "doctor" | "patient",
-   name: string,
-   email: string,
-   password: string,
-   specialty?: string, // nếu là doctor
-   bio?: string, // nếu là doctor
-   createdAt: Date,
-   }
+Khung giờ này sẽ được tạm giữ trong 15 phút và không hiển thị cho người khác.
 
-Bảng doctor_schedules
+Hệ thống tính toán và hiển thị tổng chi phí cuối cùng, sau khi đã áp dụng BHYT và các phụ phí (nếu có).
 
-Lịch trống do bác sĩ tạo.
+Thanh Toán:
 
-{
-id: string,
-doctorId: string,
-date: string, // 2025-08-26
-startTime: string, // "09:00"
-endTime: string, // "10:00"
-isBooked: boolean
-}
+Bệnh nhân phải hoàn tất thanh toán trong 15 phút.
 
-Bảng appointments
+Thanh toán thành công:
 
-Thông tin buổi hẹn.
+Trạng thái lịch hẹn chuyển thành CONFIRMED (Đã xác nhận).
 
-{
-id: string,
-patientId: string,
-doctorId: string,
-scheduleId: string, // tham chiếu đến doctor_schedules
-status: "pending" | "confirmed" | "cancelled" | "done",
-createdAt: Date,
-updatedAt: Date
-}
+Hệ thống gửi thông báo xác nhận cho cả bệnh nhân và bác sĩ.
 
-3. API Backend cần có
-   Doctor side 🧑‍⚕️
+Tính năng chat giữa bác sĩ và bệnh nhân được kích hoạt.
 
-POST /doctor/schedules → tạo lịch trống.
+Thanh toán thất bại / Hết thời gian:
 
-GET /doctor/schedules → xem lịch trống của mình.
+Lịch hẹn tạm thời bị hủy.
 
-PATCH /doctor/schedules/:id → chỉnh sửa/xóa lịch trống.
+Khung giờ được "mở" lại với trạng thái AVAILABLE cho người khác đặt.
 
-GET /doctor/appointments → xem các buổi hẹn với bệnh nhân.
+2.3. Luồng Khám Bệnh và Hoàn Tất
+Bắt đầu Khám:
 
-PATCH /doctor/appointments/:id → confirm / cancel.
+Khi đến thời gian hẹn, lịch CONFIRMED sẽ tự động chuyển trạng thái sang IN_PROGRESS (Đang khám).
 
-Patient side 👩‍⚕️
+Thực hiện Khám:
 
-GET /doctors → danh sách bác sĩ.
+Offline: Bệnh nhân đến phòng khám.
 
-GET /doctor/:id/schedules → xem lịch trống của bác sĩ.
+Online: Bệnh nhân và bác sĩ kết nối qua link video call/chat trên hệ thống.
 
-POST /appointments → đặt lịch (chọn scheduleId).
+Kết thúc Khám:
 
-GET /appointments → xem lịch đã đặt.
+Bác sĩ ghi lại chẩn đoán, ghi chú và tạo đơn thuốc điện tử.
 
-Admin side 🛠️
+Bác sĩ chuyển trạng thái lịch hẹn sang COMPLETED (Hoàn thành).
 
-GET /appointments/all → xem toàn bộ lịch hẹn.
+Toàn bộ thông tin được lưu trữ vào Lịch sử khám bệnh của bệnh nhân.
 
-PATCH /appointments/:id → can thiệp khi cần (force confirm / cancel).
+3. Chính Sách Xử Lý Tình Huống Đặc Biệt
+   3.1. Bệnh Nhân Hủy/Đổi Lịch
+   Trước 24 giờ so với giờ hẹn: Cho phép bệnh nhân tự đổi sang một lịch AVAILABLE khác hoặc hủy lịch và nhận lại tiền (dưới dạng tín dụng hoặc hoàn tiền trực tiếp, có thể trừ phí giao dịch).
 
-GET /stats/appointments → thống kê số ca khám.
+Trong vòng 24 giờ so với giờ hẹn: Không cho phép hủy/đổi, hoặc áp dụng một khoản phí nếu muốn đổi lịch.
 
-4. Luồng chi tiết ví dụ
-   Bác sĩ tạo lịch
+3.2. Bác Sĩ Có Việc Đột Xuất
+Thông báo Khẩn: Bác sĩ/Admin phải cập nhật trên hệ thống. Hệ thống ngay lập tức gửi thông báo (SMS/Email/Push Notification) đến bệnh nhân bị ảnh hưởng.
 
-Doctor A tạo lịch: 30/08/2025 - 09:00 → 10:00.
+Đề xuất Giải pháp: Admin liên hệ và cung cấp cho bệnh nhân các lựa chọn:
 
-Backend lưu vào doctor_schedules với isBooked=false.
+Đổi sang một bác sĩ khác cùng chuyên khoa có lịch trống gần nhất (có thể kèm ưu đãi).
 
-Bệnh nhân đặt lịch
+Dời sang một lịch khác với cùng bác sĩ đó.
 
-Patient B vào profile bác sĩ A → thấy khung giờ trống.
+Hủy lịch và được hoàn tiền 100%. 4. Các Thành Phần Quan Trọng Khác
+Hồ Sơ Bệnh Án:
 
-Chọn khung giờ → POST /appointments { doctorId, scheduleId }.
+Tiền sử bệnh (Medical History): Bệnh nhân cần điền trước khi khám lần đầu.
 
-Backend kiểm tra isBooked=false → tạo appointment (status=pending), update doctor_schedules.isBooked=true.
+Lịch sử khám bệnh (Consultation History): Tự động cập nhật sau mỗi lần khám.
 
-Bác sĩ xác nhận
+Hệ thống Thông báo (Notifications):
 
-Doctor A vào dashboard → thấy appointment từ Patient B.
+Nhắc lịch hẹn (trước 1 ngày, 2 giờ).
 
-PATCH /doctor/appointments/:id { status: confirmed }.
+Xác nhận thanh toán, đặt lịch.
 
-Backend update appointment status = confirmed.
+Thông báo về các thay đổi đột xuất.
 
-Đến ngày khám
+Module Thanh Toán: Tích hợp với các cổng thanh toán (VNPAY, Momo, thẻ ngân hàng...).
 
-Hệ thống gửi thông báo (email / socket).
-
-Bác sĩ & bệnh nhân join phòng video/chat.
-
-5. Frontend flow
-
-Patient:
-Trang "Tìm bác sĩ" → chọn bác sĩ → xem lịch trống → chọn giờ → đặt lịch.
-
-Doctor:
-Trang "Lịch của tôi" → thêm khung giờ trống → xem yêu cầu → xác nhận.
-
-Admin:
-Trang "Quản lý lịch hẹn" → xem tất cả → chỉnh sửa khi cần.
+Module Chat/Video Call: Xây dựng hoặc tích hợp dịch vụ bên thứ ba để phục vụ khám online.

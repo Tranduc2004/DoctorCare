@@ -6,6 +6,7 @@ import authRoutes from "./authRoutes";
 import scheduleRoutes from "./scheduleRoutes";
 import serviceRoutes from "./serviceRoutes";
 import specialtyRoutes from "./specialtyRoutes";
+import insuranceRoutes from "./insuranceRoutes";
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use("/users", userRoutes);
 router.use("/schedules", scheduleRoutes);
 router.use("/services", serviceRoutes);
 router.use("/specialties", specialtyRoutes);
+router.use("/insurance", insuranceRoutes);
 
 export default router;

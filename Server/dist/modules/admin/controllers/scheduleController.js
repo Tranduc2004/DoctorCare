@@ -16,6 +16,22 @@ exports.adminDeleteDoctorShift = exports.adminUpdateDoctorShift = exports.adminR
 const DoctorSchedule_1 = __importDefault(require("../../doctor/models/DoctorSchedule"));
 const Doctor_1 = __importDefault(require("../../doctor/models/Doctor"));
 const mongoose_1 = __importDefault(require("mongoose"));
+function toMinutes(t) {
+    if (!t)
+        return 0;
+    const [h, m] = t
+        .slice(0, 5)
+        .split(":")
+        .map((x) => parseInt(x, 10));
+    return h * 60 + m;
+}
+function toTime(mins) {
+    const h = Math.floor(mins / 60)
+        .toString()
+        .padStart(2, "0");
+    const m = (mins % 60).toString().padStart(2, "0");
+    return `${h}:${m}`;
+}
 // Admin: Tạo 1 ca làm việc cho bác sĩ
 const adminCreateDoctorShift = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b, _c;
@@ -61,13 +77,36 @@ const adminCreateDoctorShift = (req, res) => __awaiter(void 0, void 0, void 0, f
                 .json({ message: "Đã có bác sĩ cùng chuyên khoa trong khung giờ này" });
             return;
         }
-        const shift = yield DoctorSchedule_1.default.create({
-            doctorId,
-            date: normalizedDate,
-            startTime: normStart,
-            endTime: normEnd,
-        });
-        res.status(201).json(shift);
+        // Split long shift into 60-minute slots
+        const startM = toMinutes(normStart);
+        const endM = toMinutes(normEnd);
+        const SLOTP = 60;
+        const created = [];
+        for (let s = startM; s < endM; s += SLOTP) {
+            const e = Math.min(s + SLOTP, endM);
+            if (e - s <= 0)
+                continue;
+            const st = toTime(s);
+            const et = toTime(e);
+            const exists = yield DoctorSchedule_1.default.findOne({
+                doctorId,
+                date: normalizedDate,
+                startTime: st,
+                endTime: et,
+            }).lean();
+            if (exists)
+                continue;
+            const item = yield DoctorSchedule_1.default.create({
+                doctorId,
+                date: normalizedDate,
+                startTime: st,
+                endTime: et,
+            });
+            created.push(item);
+        }
+        res
+            .status(201)
+            .json(created.length ? created : { message: "No new slots" });
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi tạo ca làm việc", error });

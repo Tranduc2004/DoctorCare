@@ -179,6 +179,7 @@ export default function BookingFormRedesigned() {
   const [phone, setPhone] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [note, setNote] = useState<string>("");
+  const [mode, setMode] = useState<"online" | "offline">("offline");
 
   // Specialty/Doctor
   const [specialties, setSpecialties] = useState<ISpecialty[]>([]);
@@ -413,13 +414,30 @@ export default function BookingFormRedesigned() {
         .filter(Boolean)
         .join(" | ");
 
-      await createAppointment({
+      const resp = await createAppointment({
         patientId: user!._id,
         doctorId: chosen.doctorId,
         scheduleId: chosen.schedule._id,
         note: finalNote,
         symptoms: "",
+        mode,
       });
+
+      // Server returns data + holdExpiresAt when appointment is a payment hold
+      const appointment = resp?.data;
+      const holdExpiresAt = resp?.holdExpiresAt;
+      if (holdExpiresAt && appointment && appointment._id) {
+        const holdMinutes = Math.max(
+          1,
+          Math.round((new Date(holdExpiresAt).getTime() - Date.now()) / 60000)
+        );
+        toast.success(
+          `Đặt lịch thành công! Giữ chỗ ${holdMinutes} phút. Chuyển tới thanh toán.`
+        );
+        // Navigate to payment page so user can complete payment
+        window.location.href = `/payments/${appointment._id}`;
+        return;
+      }
       toast.success("Đặt lịch thành công! Đang chờ xác nhận");
       setSelectedSuggestionKey("");
     } catch (err: unknown) {
@@ -592,13 +610,6 @@ export default function BookingFormRedesigned() {
     };
   }, []);
 
-  /* ===== Date helpers ===== */
-  function changeDate(deltaDays: number) {
-    const d = new Date(date);
-    d.setDate(d.getDate() + deltaDays);
-    setDate(d.toISOString().slice(0, 10));
-  }
-
   /* =================== UI =================== */
   return (
     <div className="min-h-screen bg-gray-50">
@@ -684,26 +695,12 @@ export default function BookingFormRedesigned() {
               </Field>
               <Field label="Ngày khám">
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => changeDate(-1)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50"
-                  >
-                    −1 ngày
-                  </button>
                   <input
                     type="date"
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-200"
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
                   />
-                  <button
-                    type="button"
-                    onClick={() => changeDate(1)}
-                    className="rounded-lg border border-gray-300 px-3 py-2 hover:bg-gray-50"
-                  >
-                    +1 ngày
-                  </button>
                 </div>
               </Field>
             </div>
@@ -1002,6 +999,33 @@ export default function BookingFormRedesigned() {
             </div>
 
             <form onSubmit={handleSubmit} className="mt-5">
+              <div className="mb-3">
+                <label className="text-sm font-medium text-gray-700">
+                  Hình thức
+                </label>
+                <div className="mt-2 flex items-center gap-3">
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="offline"
+                      checked={mode === "offline"}
+                      onChange={() => setMode("offline")}
+                    />
+                    <span>Tại cơ sở</span>
+                  </label>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="mode"
+                      value="online"
+                      checked={mode === "online"}
+                      onChange={() => setMode("online")}
+                    />
+                    <span>Trực tuyến</span>
+                  </label>
+                </div>
+              </div>
               <button
                 id="submit-booking"
                 type="submit"

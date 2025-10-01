@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   getMyAppointmentHistory,
   getMyAppointments,
+  getDoctorSchedules,
 } from "../../../api/appointmentApi";
 import { useAuth } from "../../../contexts/AuthContext";
 import {
@@ -9,25 +10,34 @@ import {
   FaClock,
   FaSearch,
   FaTimes,
-  FaHospital,
-  FaTag,
   FaFileCsv,
   FaPrint,
   FaFilePdf,
   FaShareAlt,
   FaCalendarPlus,
-  FaMapMarkerAlt,
-  FaPhone,
-  FaEnvelope,
+  FaTag,
 } from "react-icons/fa";
+import ChatModal from "../../../components/Chat/ChatModal";
+import { sendMessage } from "../../../api/chatApi";
 
+/* ================== Types & constants ================== */
 type StatusKey =
-  | "pending"
+  | "booked"
+  | "doctor_approved"
+  | "doctor_rejected"
+  | "doctor_reschedule"
+  | "pending_payment"
+  | "await_payment"
+  | "payment_overdue"
+  | "paid"
+  | "payment_failed"
   | "confirmed"
-  | "examining"
-  | "prescribing"
-  | "done"
-  | "cancelled";
+  | "in_consult"
+  | "prescription_issued"
+  | "ready_to_discharge"
+  | "completed"
+  | "cancelled"
+  | "closed";
 
 type AppointmentItem = {
   _id: string;
@@ -36,6 +46,11 @@ type AppointmentItem = {
   note?: string;
   createdAt: string;
   updatedAt: string;
+  patientInfo?: {
+    name: string;
+    phone: string;
+    email: string;
+  };
   doctorId?: {
     _id: string;
     name: string;
@@ -48,58 +63,135 @@ type AppointmentItem = {
     startTime?: string;
     endTime?: string;
   };
+  // When doctor proposes a concrete schedule this may be populated
+  newScheduleId?:
+    | {
+        _id?: string;
+        date?: string;
+        startTime?: string;
+        endTime?: string;
+      }
+    | string;
+  mode?: "online" | "offline" | string;
 };
+
 type TabKey = StatusKey | "all";
 
 const STATUS_META: Record<
   StatusKey,
   { label: string; badge: string; dot: string; colorHex: string }
 > = {
-  pending: {
-    label: "Chờ xác nhận",
-    badge: "bg-amber-100 text-amber-700",
+  booked: {
+    label: "Mới đặt lịch",
+    badge: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
     dot: "bg-amber-400",
     colorHex: "#f59e0b",
   },
+  doctor_approved: {
+    label: "Bác sĩ đã duyệt",
+    badge: "bg-sky-50 text-sky-700 ring-1 ring-sky-200",
+    dot: "bg-sky-500",
+    colorHex: "#0284c7",
+  },
+  doctor_rejected: {
+    label: "Bác sĩ từ chối",
+    badge: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+    dot: "bg-rose-500",
+    colorHex: "#e11d48",
+  },
+  doctor_reschedule: {
+    label: "Cần đổi lịch",
+    badge: "bg-orange-50 text-orange-700 ring-1 ring-orange-200",
+    dot: "bg-orange-500",
+    colorHex: "#ea580c",
+  },
+  pending_payment: {
+    label: "Chờ thanh toán",
+    badge: "bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200",
+    dot: "bg-yellow-400",
+    colorHex: "#eab308",
+  },
+  await_payment: {
+    label: "Chờ thanh toán",
+    badge: "bg-yellow-50 text-yellow-700 ring-1 ring-yellow-200",
+    dot: "bg-yellow-400",
+    colorHex: "#eab308",
+  },
+  payment_overdue: {
+    label: "Đặt lịch thất bại",
+    badge: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+    dot: "bg-rose-500",
+    colorHex: "#e11d48",
+  },
+  paid: {
+    label: "Đã thanh toán",
+    badge: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+    dot: "bg-emerald-500",
+    colorHex: "#10b981",
+  },
+  payment_failed: {
+    label: "Thanh toán thất bại",
+    badge: "bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+    dot: "bg-rose-500",
+    colorHex: "#e11d48",
+  },
   confirmed: {
     label: "Đã xác nhận",
-    badge: "bg-blue-100 text-blue-700",
-    dot: "bg-blue-500",
-    colorHex: "#2563eb",
+    badge: "bg-teal-50 text-teal-700 ring-1 ring-teal-200",
+    dot: "bg-teal-500",
+    colorHex: "#0d9488",
   },
-  examining: {
+  in_consult: {
     label: "Đang khám",
-    badge: "bg-indigo-100 text-indigo-700",
+    badge: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
+    dot: "bg-violet-500",
+    colorHex: "#7c3aed",
+  },
+  prescription_issued: {
+    label: "Đã kê đơn",
+    badge: "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200",
     dot: "bg-indigo-500",
     colorHex: "#4f46e5",
   },
-  prescribing: {
-    label: "Kê đơn",
-    badge: "bg-sky-100 text-sky-700",
-    dot: "bg-sky-500",
-    colorHex: "#0ea5e9",
+  ready_to_discharge: {
+    label: "Sẵn sàng kết thúc",
+    badge: "bg-teal-50 text-teal-700 ring-1 ring-teal-200",
+    dot: "bg-teal-500",
+    colorHex: "#0d9488",
   },
-  done: {
+  completed: {
     label: "Hoàn thành",
-    badge: "bg-green-100 text-green-700",
-    dot: "bg-green-500",
-    colorHex: "#16a34a",
+    badge: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
+    dot: "bg-emerald-500",
+    colorHex: "#10b981",
   },
   cancelled: {
     label: "Đã hủy",
-    badge: "bg-red-100 text-red-700",
-    dot: "bg-red-500",
-    colorHex: "#dc2626",
+    badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+    dot: "bg-slate-400",
+    colorHex: "#94a3b8",
+  },
+  closed: {
+    label: "Đã đóng",
+    badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+    dot: "bg-slate-500",
+    colorHex: "#64748b",
   },
 };
+
 const STATUS_ORDER: StatusKey[] = [
-  "pending",
+  "booked",
+  "doctor_approved",
+  "pending_payment",
+  "payment_overdue",
+  "paid",
   "confirmed",
-  "examining",
-  "prescribing",
-  "done",
+  "in_consult",
+  "prescription_issued",
+  "completed",
 ];
 
+/* ================== Helpers ================== */
 function initials(name?: string) {
   if (!name) return "BS";
   const p = name.trim().split(/\s+/);
@@ -125,6 +217,7 @@ function parseService(note?: string) {
   return m?.[1]?.trim() || "";
 }
 
+/* ================== Modal ================== */
 function Modal({
   open,
   onClose,
@@ -142,10 +235,11 @@ function Modal({
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
       <div className="relative z-10 w-full max-w-3xl rounded-2xl bg-white p-5 shadow-xl">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
+          <h3 className="text-lg font-semibold text-slate-900">{title}</h3>
           <button
             onClick={onClose}
-            className="rounded-full p-2 text-gray-500 hover:bg-gray-100"
+            className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+            aria-label="Đóng"
           >
             <FaTimes />
           </button>
@@ -156,6 +250,7 @@ function Modal({
   );
 }
 
+/* ================== Stepper (tiến trình) ================== */
 function Stepper({
   current,
   cancelled,
@@ -171,17 +266,17 @@ function Stepper({
         return (
           <div key={st} className="flex items-center gap-2">
             <div
-              className={`h-2 w-8 rounded ${
-                i === 0 ? "hidden" : active ? "bg-teal-500" : "bg-gray-200"
+              className={`h-1.5 w-8 rounded ${
+                i === 0 ? "hidden" : active ? "bg-teal-500" : "bg-slate-200"
               }`}
             />
             <div
               className={`h-6 w-6 shrink-0 rounded-full border text-[10px] font-semibold flex items-center justify-center ${
                 cancelled
-                  ? "border-red-400 text-red-600"
+                  ? "border-rose-400 text-rose-600"
                   : active
-                  ? "border-teal-500 text-teal-600"
-                  : "border-gray-300 text-gray-400"
+                  ? "border-teal-500 text-teal-700"
+                  : "border-slate-300 text-slate-400"
               }`}
               title={STATUS_META[st].label}
             >
@@ -194,6 +289,7 @@ function Stepper({
   );
 }
 
+/* ================== Component ================== */
 export default function AppointmentHistoryPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -209,38 +305,88 @@ export default function AppointmentHistoryPage() {
   const [limit, setLimit] = useState(PAGE);
   useEffect(() => setLimit(PAGE), [activeTab, q, from, to]);
 
+  // Tabs to show in the toolbar - include doctor_reschedule so patients can filter proposals
+
   const [detail, setDetail] = useState<AppointmentItem | null>(null);
   const printRef = useRef<HTMLDivElement | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatAppointment, setChatAppointment] =
+    useState<AppointmentItem | null>(null);
 
+  // derive chat modal payload matching ChatModal's Appointment interface
+  const chatModalPayload = chatAppointment
+    ? {
+        _id: chatAppointment._id,
+        patientId: {
+          _id: user?._id || "",
+          name: chatAppointment.patientInfo?.name || user?.name || "",
+          email: chatAppointment.patientInfo?.email || user?.email || "",
+          phone: chatAppointment.patientInfo?.phone || user?.phone || "",
+        },
+        scheduleId: {
+          _id: chatAppointment.scheduleId?._id || "",
+          date: chatAppointment.scheduleId?.date || chatAppointment.updatedAt,
+          startTime: chatAppointment.scheduleId?.startTime || "00:00",
+          endTime: chatAppointment.scheduleId?.endTime || "00:00",
+        },
+        status: chatAppointment.status || "booked",
+        symptoms: chatAppointment.symptoms,
+        note: chatAppointment.note,
+        createdAt: chatAppointment.createdAt,
+      }
+    : null;
+
+  /* -------- load data -------- */
   useEffect(() => {
     (async () => {
       if (!user?._id) return;
       setLoading(true);
       setError("");
       try {
-        // Merge current + history and de-duplicate by id
-        const [current, past] = await Promise.all([
-          getMyAppointments(user._id).catch(() => []),
-          getMyAppointmentHistory(user._id).catch(() => []),
+        const [curr, hist] = await Promise.all([
+          getMyAppointments(user._id),
+          getMyAppointmentHistory(user._id),
         ]);
-        const map = new Map<string, AppointmentItem>();
-        [
-          ...(Array.isArray(current) ? current : []),
-          ...(Array.isArray(past) ? past : []),
-        ].forEach((it: any) => {
-          map.set(String(it._id), it as AppointmentItem);
-        });
-        const merged = Array.from(map.values()).sort((a, b) => {
-          const ak = `${a.scheduleId?.date ?? a.updatedAt}${
-            a.scheduleId?.startTime ?? ""
-          }`;
-          const bk = `${b.scheduleId?.date ?? b.updatedAt}${
-            b.scheduleId?.startTime ?? ""
-          }`;
+        const mergedArr: AppointmentItem[] = [
+          ...(Array.isArray(curr) ? curr : []),
+          ...(Array.isArray(hist) ? hist : []),
+        ];
+        // Deduplicate by _id robustly: stringify ids and keep the most recent entry per id
+        const byId = new Map<string, AppointmentItem>();
+        for (const ap of mergedArr) {
+          const id = String(ap._id);
+          if (!byId.has(id)) {
+            byId.set(id, ap);
+            continue;
+          }
+          const existing = byId.get(id)!;
+          const existingKey =
+            existing.scheduleId?.date || existing.updatedAt || "";
+          const currentKey = ap.scheduleId?.date || ap.updatedAt || "";
+          if (currentKey > existingKey) {
+            byId.set(id, ap);
+          }
+        }
+        const merged = Array.from(byId.values());
+        // Final guard: ensure unique _id strings
+        const uniq: AppointmentItem[] = [];
+        const seen = new Set<string>();
+        for (const a of merged) {
+          const id = String(a._id);
+          if (seen.has(id)) continue;
+          seen.add(id);
+          uniq.push(a);
+        }
+        const finalList = uniq;
+        // sort by most recent date (schedule date or updatedAt)
+        finalList.sort((a, b) => {
+          const ak = `${a.scheduleId?.date || a.updatedAt || ""}`;
+          const bk = `${b.scheduleId?.date || b.updatedAt || ""}`;
           return bk.localeCompare(ak);
         });
-        setItems(merged);
-      } catch {
+        setItems(finalList);
+      } catch (e) {
+        console.error(e);
         setError("Không tải được lịch sử lịch hẹn");
       } finally {
         setLoading(false);
@@ -248,6 +394,7 @@ export default function AppointmentHistoryPage() {
     })();
   }, [user?._id]);
 
+  /* -------- filters -------- */
   const filtered = useMemo(() => {
     const base =
       activeTab === "all"
@@ -261,13 +408,17 @@ export default function AppointmentHistoryPage() {
       if (to && d > to) return false;
       return true;
     };
+    const today = new Date().toISOString().slice(0, 10);
     return base.filter((it) => {
       const hay = `${it.doctorId?.name || ""} ${it.symptoms || ""} ${
         it.note || ""
       }`;
       const okQ = q ? norm(hay).includes(norm(q)) : true;
       const dateKey = it.scheduleId?.date || it.updatedAt;
-      return okQ && inRange(dateKey);
+      // If appointment has a schedule date, only include today or future dates
+      const scheduleDate = it.scheduleId?.date;
+      const isNotPast = scheduleDate ? scheduleDate >= today : true;
+      return okQ && inRange(dateKey) && isNotPast;
     });
   }, [items, activeTab, q, from, to]);
 
@@ -287,6 +438,7 @@ export default function AppointmentHistoryPage() {
     return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered, limit]);
 
+  /* -------- export/print -------- */
   function exportCSV(rows: AppointmentItem[]) {
     const header = [
       "id",
@@ -314,7 +466,7 @@ export default function AppointmentHistoryPage() {
     ]);
     const csv = [header, ...body]
       .map((arr) =>
-        arr.map((c) => `"${String(c).replaceAll('"', '""')}"`).join(",")
+        arr.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
       )
       .join("\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
@@ -326,13 +478,15 @@ export default function AppointmentHistoryPage() {
     URL.revokeObjectURL(url);
   }
 
+  function toDT(d: string, t = "00:00") {
+    return `${d.replace(/-/g, "")}T${t.replace(":", "")}00`;
+  }
+
   function downloadICS(appt: AppointmentItem) {
     const title = `Khám với ${appt.doctorId?.name || "Bác sĩ"}`;
     const date =
       appt.scheduleId?.date ||
       new Date(appt.updatedAt).toISOString().slice(0, 10);
-    const toDT = (d: string, t = "00:00") =>
-      `${d.replace(/-/g, "")}T${t.replace(":", "")}00`;
     const dtStart = toDT(date, appt.scheduleId?.startTime || "08:00");
     const dtEnd = toDT(date, appt.scheduleId?.endTime || "09:00");
     const description = [parseService(appt.note), appt.symptoms, appt.note]
@@ -364,9 +518,14 @@ END:VCALENDAR`;
     if (!node) return window.print();
     const w = window.open("", "_blank");
     if (!w) return;
-    w.document
-      .write(`<!doctype html><html><head><meta charset="utf-8" /><title>Lịch hẹn</title>
-      <style>body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px} .card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:8px} .muted{color:#6b7280;font-size:12px}</style></head><body>`);
+    w.document.write(`<!doctype html><html><head><meta charset="utf-8" />
+<title>Lịch hẹn</title>
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;padding:24px}
+h2{margin:0 0 12px}
+.card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;margin-bottom:8px}
+.muted{color:#6b7280;font-size:12px}
+</style></head><body>`);
     w.document.write(`<h2>Danh sách lịch hẹn (${filtered.length})</h2>`);
     w.document.write(node.innerHTML);
     w.document.write("</body></html>");
@@ -376,246 +535,533 @@ END:VCALENDAR`;
     w.close();
   }
 
+  const handleSendMessage = async (message: string, appointmentId: string) => {
+    try {
+      if (!detail) return;
+      await sendMessage({
+        appointmentId,
+        doctorId: detail.doctorId?._id || "",
+        patientId: user?._id || "",
+        senderRole: "patient",
+        content: message,
+      });
+      alert("Tin nhắn đã gửi");
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Gửi tin nhắn thất bại");
+    }
+  };
+
+  /* ================== UI ================== */
   return (
-    <div className="min-h-[70vh] bg-gray-50">
-      <div className="bg-gradient-to-r from-sky-500 via-teal-500 to-emerald-500 text-white">
-        <div className="mx-auto max-w-6xl px-4 py-7">
+    <div className="min-h-[70vh] bg-slate-50">
+      {/* Header brand gradient (giữ tông của hệ thống) */}
+      <div className="bg-gradient-to-r from-blue-500 to-teal-400 text-white">
+        <div className="mx-auto max-w-6xl px-4 py-8">
           <h1 className="text-2xl sm:text-3xl font-bold">
             Lịch sử & tình trạng lịch hẹn
           </h1>
           <p className="text-white/90">
-            lịch sử đặt lịch khám với bác sĩ của bạn
+            Lịch sử đặt lịch khám với bác sĩ của bạn
           </p>
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            {(
-              [
-                "all",
-                "pending",
-                "confirmed",
-                "examining",
-                "prescribing",
-                "done",
-                "cancelled",
-              ] as TabKey[]
-            ).map((t) => (
-              <button
-                key={t}
-                onClick={() => setActiveTab(t)}
-                className={`rounded-full border px-3 py-1 text-sm ${
-                  activeTab === t
-                    ? "border-teal-500 bg-teal-50 text-teal-700"
-                    : "border-gray-300 text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                {t === "all" ? "Tất cả" : STATUS_META[t as StatusKey].label}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Tìm bác sĩ/ghi chú..."
-                className="w-56 rounded-lg border border-gray-300 pl-9 pr-3 py-2 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-200"
-              />
+      {/* Toolbar dính trên (glass) */}
+      {/* === Toolbar gọn gàng === */}
+      <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200">
+        <div className="mx-auto max-w-6xl px-4">
+          <div className="py-3 flex flex-col gap-3">
+            {/* Row 1: Tabs (cuộn ngang, ẩn scrollbar) */}
+            <div
+              className="flex items-center gap-2 overflow-x-auto -mx-1 px-1
+                   [scrollbar-width:none] [-ms-overflow-style:none]
+                   [&::-webkit-scrollbar]:hidden"
+              aria-label="Bộ lọc trạng thái"
+            >
+              {(
+                [
+                  "all",
+                  "booked",
+                  "doctor_approved",
+                  "pending_payment",
+                  "payment_overdue",
+                  "paid",
+                  "confirmed",
+                  "in_consult",
+                  "prescription_issued",
+                  "completed",
+                  "payment_failed",
+                  "cancelled",
+                ] as TabKey[]
+              ).map((t) => {
+                const isActive = activeTab === t;
+                const label =
+                  t === "all" ? "Tất cả" : STATUS_META[t as StatusKey].label;
+                return (
+                  <button
+                    key={t}
+                    onClick={() => setActiveTab(t)}
+                    className={[
+                      "h-9 whitespace-nowrap rounded-full px-3 text-sm transition",
+                      "ring-1 ring-slate-200",
+                      isActive
+                        ? "bg-gradient-to-r from-blue-500 to-teal-400 text-white ring-teal-600 shadow-sm"
+                        : "bg-white text-slate-700 hover:bg-slate-50",
+                    ].join(" ")}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">Từ</span>
-              <input
-                type="date"
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-                className="rounded-lg border border-gray-300 px-2 py-1 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-200"
-              />
-              <span className="text-gray-500">đến</span>
-              <input
-                type="date"
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                className="rounded-lg border border-gray-300 px-2 py-1 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-200"
-              />
-              {(from || to) && (
+
+            {/* Row 2: Tìm kiếm + khoảng ngày + Export */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-2">
+              {/* Search */}
+              <div className="sm:col-span-5 relative">
+                <FaSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Tìm bác sĩ / ghi chú…"
+                  aria-label="Tìm kiếm"
+                  className="h-10 w-full rounded-lg bg-white pl-9 pr-3 ring-1 ring-slate-200
+                       focus:outline-none focus:ring-2 focus:ring-teal-300"
+                />
+              </div>
+
+              {/* Date range (gộp trong một group) */}
+              <div className="sm:col-span-5">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-10 items-center rounded-lg bg-white ring-1 ring-slate-200">
+                    <label
+                      className="px-2 text-sm text-slate-500"
+                      htmlFor="from"
+                    >
+                      Từ
+                    </label>
+                    <input
+                      id="from"
+                      type="date"
+                      value={from}
+                      onChange={(e) => setFrom(e.target.value)}
+                      className="h-10 border-0 bg-transparent px-2 text-sm focus:outline-none focus:ring-0"
+                    />
+                    <div className="h-6 w-px bg-slate-200" />
+                    <label className="px-2 text-sm text-slate-500" htmlFor="to">
+                      đến
+                    </label>
+                    <input
+                      id="to"
+                      type="date"
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                      className="h-10 border-0 bg-transparent px-2 text-sm focus:outline-none focus:ring-0"
+                    />
+                  </div>
+                  {(from || to) && (
+                    <button
+                      onClick={() => {
+                        setFrom("");
+                        setTo("");
+                      }}
+                      className="h-10 rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                    >
+                      Xóa
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Export */}
+              <div className="sm:col-span-2 flex items-center justify-start sm:justify-end gap-2">
                 <button
-                  onClick={() => {
-                    setFrom("");
-                    setTo("");
-                  }}
-                  className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50"
+                  onClick={() => exportCSV(filtered)}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  aria-label="Xuất CSV"
                 >
-                  Xóa
+                  <FaFileCsv /> CSV
                 </button>
-              )}
-            </div>
-            <div className="ml-auto flex items-center gap-2">
-              <button
-                onClick={() => exportCSV(filtered)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-              >
-                <FaFileCsv /> CSV
-              </button>
-              <button
-                onClick={printList}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
-              >
-                <FaPrint /> In / PDF
-              </button>
+                <button
+                  onClick={printList}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-white px-3 text-sm text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
+                  aria-label="In hoặc lưu PDF"
+                >
+                  <FaPrint /> In / PDF
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      </div>
 
+      {/* Content */}
+      <div className="mx-auto max-w-6xl px-4 py-6">
         {loading && (
-          <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-3">
             {Array.from({ length: 6 }).map((_, i) => (
               <div
                 key={i}
-                className="h-20 rounded-xl bg-gray-200/60 animate-pulse"
+                className="h-20 rounded-xl bg-slate-200/60 animate-pulse"
               />
             ))}
           </div>
         )}
+
         {!loading && error && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-700">
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-rose-700">
             {error}
           </div>
         )}
 
         {!loading && !error && groups.length === 0 && (
-          <div className="rounded-2xl border border-gray-200 bg-white p-8 text-center text-gray-600">
+          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-600">
             Chưa có lịch hẹn phù hợp bộ lọc.
           </div>
         )}
 
         {!loading && !error && groups.length > 0 && (
-          <div className="space-y-8" ref={printRef}>
+          <div className="space-y-10 print:space-y-4" ref={printRef}>
             {groups.map(([day, list]) => (
               <section key={day}>
-                <div className="mb-3 flex items-center gap-2">
-                  <div className="rounded-lg bg-gray-100 px-3 py-1 text-sm font-medium text-gray-700">
-                    {formatDate(day)}
-                  </div>
-                  <span className="text-xs text-gray-500">
-                    {list.length} lịch hẹn
+                {/* sticky date chip */}
+                <div className="sticky top-[64px] -ml-1 mb-3 w-max rounded-full bg-white/80 px-3 py-1 text-sm font-medium text-slate-700 ring-1 ring-slate-200 backdrop-blur">
+                  {formatDate(day)}{" "}
+                  <span className="text-xs text-slate-400">
+                    • {list.length} lịch hẹn
                   </span>
                 </div>
 
-                <ol className="relative ml-3 border-l-2 border-gray-200">
+                <ol className="relative ml-3 border-l-2 border-slate-200">
                   {list.map((it) => {
                     const key =
                       (it.status as StatusKey) in STATUS_META
                         ? (it.status as StatusKey)
-                        : "pending";
+                        : "booked";
                     const meta = STATUS_META[key];
                     const service = parseService(it.note);
+
                     return (
-                      <li key={it._id} className="mb-6 ml-4">
+                      <li key={it._id} className="mb-6 ml-4 print:mb-3">
+                        {/* mốc thời gian */}
                         <span
                           className={`absolute -left-[9px] mt-1 h-4 w-4 rounded-full ${meta.dot}`}
-                        ></span>
-                        <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold text-gray-700">
-                                {initials(it.doctorId?.name)}
-                              </div>
-                              <div>
-                                <div className="font-medium text-gray-900">
-                                  {it.doctorId?.name || "Bác sĩ"}
-                                </div>
-                                <div className="text-xs text-gray-600">
-                                  {it.doctorId?.specialty || ""}
-                                  {it.doctorId?.workplace
-                                    ? ` • ${it.doctorId.workplace}`
-                                    : ""}
-                                </div>
-                              </div>
-                            </div>
-                            <span
-                              className={`rounded-full px-2 py-1 text-xs font-medium ${meta.badge}`}
-                            >
-                              {meta.label}
-                            </span>
-                          </div>
+                        />
 
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                            <div className="flex items-center gap-2 text-gray-700">
-                              <FaCalendarAlt className="text-gray-400" />
-                              {formatDate(it.scheduleId?.date || it.updatedAt)}
+                        {/* card nhẹ, có vạch màu trạng thái ở cạnh trái */}
+                        <div
+                          className="rounded-xl bg-white ring-1 ring-slate-200 shadow-sm hover:shadow transition"
+                          style={{ borderLeft: `4px solid ${meta.colorHex}` }}
+                        >
+                          <div className="p-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {/* bác sĩ */}
+                              <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-700">
+                                  {initials(it.doctorId?.name)}
+                                </div>
+                                <div>
+                                  <div className="font-medium text-slate-900">
+                                    {it.doctorId?.name || "Bác sĩ"}
+                                  </div>
+                                  <div className="text-xs text-slate-600">
+                                    {[
+                                      it.doctorId?.specialty,
+                                      it.doctorId?.workplace,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" • ")}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* trạng thái */}
+                              <span
+                                className={`ml-auto rounded-full px-2 py-1 text-xs font-medium ${meta.badge}`}
+                              >
+                                {meta.label}
+                              </span>
+
+                              {/* mode */}
+                              <span
+                                className={`rounded-full px-2 py-1 text-xs font-medium ring-1 ${
+                                  it.mode === "online"
+                                    ? "bg-teal-50 text-teal-700 ring-teal-200"
+                                    : "bg-slate-50 text-slate-700 ring-slate-200"
+                                }`}
+                              >
+                                {it.mode === "online"
+                                  ? "Trực tuyến"
+                                  : "Tại cơ sở"}
+                              </span>
                             </div>
-                            {it.scheduleId?.startTime &&
-                              it.scheduleId?.endTime && (
-                                <div className="flex items-center gap-2 text-gray-700">
-                                  <FaClock className="text-gray-400" />
-                                  {formatRange(
-                                    it.scheduleId.startTime,
-                                    it.scheduleId.endTime
-                                  )}
+
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                              <div className="flex items-center gap-2 text-slate-700">
+                                <FaCalendarAlt className="text-slate-400" />
+                                {formatDate(
+                                  it.scheduleId?.date || it.updatedAt
+                                )}
+                              </div>
+                              {it.scheduleId?.startTime &&
+                                it.scheduleId?.endTime && (
+                                  <div className="flex items-center gap-2 text-slate-700">
+                                    <FaClock className="text-slate-400" />
+                                    {formatRange(
+                                      it.scheduleId.startTime,
+                                      it.scheduleId.endTime
+                                    )}
+                                  </div>
+                                )}
+                              {service && (
+                                <div className="sm:col-span-2 flex items-center gap-2 text-slate-700">
+                                  <FaTag className="text-slate-400" /> {service}
                                 </div>
                               )}
-                            {service && (
-                              <div className="col-span-2 flex items-center gap-2 text-gray-700">
-                                <FaTag className="text-gray-400" /> {service}
+                            </div>
+
+                            {it.symptoms && (
+                              <div className="mt-2 text-sm text-slate-700">
+                                <span className="font-medium">
+                                  Triệu chứng:{" "}
+                                </span>
+                                {it.symptoms}
                               </div>
                             )}
-                          </div>
+                            {it.note && (
+                              <div className="mt-1 text-xs text-slate-500 line-clamp-2">
+                                {it.note}
+                              </div>
+                            )}
 
-                          {it.symptoms && (
-                            <div className="mt-2 text-sm text-gray-700">
-                              <span className="font-medium">Triệu chứng: </span>
-                              {it.symptoms}
-                            </div>
-                          )}
-                          {it.note && (
-                            <div className="mt-1 text-xs text-gray-500 line-clamp-2">
-                              {it.note}
-                            </div>
-                          )}
+                            {/* Show proposed new schedule when doctor proposed a reschedule */}
+                            {it.status === "doctor_reschedule" &&
+                              it.newScheduleId &&
+                              (() => {
+                                const ns =
+                                  typeof it.newScheduleId === "string"
+                                    ? null
+                                    : it.newScheduleId;
+                                return (
+                                  <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-2 text-sm text-amber-700">
+                                    <div className="font-medium">
+                                      Bác sĩ đề xuất lịch mới
+                                    </div>
+                                    <div>
+                                      {ns?.date ||
+                                        (typeof it.newScheduleId === "string"
+                                          ? it.newScheduleId
+                                          : "—")}
+                                      {ns
+                                        ? ` • ${ns.startTime || ""} - ${
+                                            ns.endTime || ""
+                                          }`
+                                        : ""}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
 
-                          <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                            <button
-                              onClick={() => setDetail(it)}
-                              className="rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                            >
-                              Chi tiết
-                            </button>
-                            <button
-                              onClick={() => downloadICS(it)}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                            >
-                              <FaCalendarPlus /> Thêm vào lịch
-                            </button>
-                            <button
-                              onClick={() => {
-                                try {
-                                  navigator.share?.({
-                                    title: "Lịch khám",
-                                    text: `${formatDate(
-                                      it.scheduleId?.date
-                                    )} ${formatRange(
-                                      it.scheduleId?.startTime,
-                                      it.scheduleId?.endTime
-                                    )} - ${it.doctorId?.name}`,
-                                  });
-                                } catch {}
-                              }}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                            >
-                              <FaShareAlt /> Chia sẻ
-                            </button>
-                            <a
-                              href={`/appointment?doctorId=${
-                                it.doctorId?._id || ""
-                              }`}
-                              className="inline-flex items-center gap-1 rounded-md border border-gray-300 px-2 py-1 hover:bg-gray-50"
-                            >
-                              Đặt lại
-                            </a>
+                            {/* actions */}
+                            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-600">
+                              <button
+                                onClick={() => setDetail(it)}
+                                className="rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                              >
+                                Chi tiết
+                              </button>
+
+                              {(it.status === "pending_payment" ||
+                                it.status === "await_payment") && (
+                                <a
+                                  href={`/payments/${it._id}`}
+                                  className="rounded-md bg-teal-600 px-2 py-1 text-white hover:bg-teal-700"
+                                >
+                                  Thanh toán
+                                </a>
+                              )}
+
+                              <button
+                                onClick={() => downloadICS(it)}
+                                className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                              >
+                                <FaCalendarPlus /> Thêm vào lịch
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  try {
+                                    navigator.share?.({
+                                      title: "Lịch khám",
+                                      text: `${formatDate(
+                                        it.scheduleId?.date
+                                      )} ${formatRange(
+                                        it.scheduleId?.startTime,
+                                        it.scheduleId?.endTime
+                                      )} - ${it.doctorId?.name}`,
+                                    });
+                                  } catch (e) {
+                                    console.error("Share failed", e);
+                                  }
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                              >
+                                <FaShareAlt /> Chia sẻ
+                              </button>
+
+                              <a
+                                href={`/appointment?doctorId=${
+                                  it.doctorId?._id || ""
+                                }`}
+                                className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                              >
+                                Đặt lại
+                              </a>
+
+                              {/* Patient quick reschedule request for confirmed but not started appointments */}
+                              {it.status === "confirmed" && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      // fetch doctor's schedules (their working shifts)
+                                      const doctorId = it.doctorId?._id;
+                                      if (!doctorId) {
+                                        alert("Không xác định được bác sĩ");
+                                        return;
+                                      }
+                                      const schedules =
+                                        await getDoctorSchedules(doctorId);
+                                      const free = Array.isArray(schedules)
+                                        ? schedules.filter((s) => !s.isBooked)
+                                        : [];
+                                      const slots = free.map(
+                                        (s) =>
+                                          `${s.date} ${s.startTime} - ${s.endTime}`
+                                      );
+                                      if (slots.length === 0) {
+                                        alert(
+                                          "Hiện bác sĩ không có khung giờ rảnh trong ca làm phù hợp. Bạn có thể gửi tin nhắn yêu cầu bác sĩ đề xuất khung khác."
+                                        );
+                                        // open chat so patient can message the doctor
+                                        setChatAppointment(it);
+                                        setChatOpen(true);
+                                        return;
+                                      }
+
+                                      // Show available slots and ask user to confirm sending them as a proposal
+                                      const confirmMsg =
+                                        "Các khung giờ rảnh của bác sĩ:\n" +
+                                        slots
+                                          .map((s, i) => `${i + 1}. ${s}`)
+                                          .join("\n") +
+                                        "\n\nGửi toàn bộ danh sách này tới bác sĩ để yêu cầu đổi lịch?";
+                                      if (!confirm(confirmMsg)) return;
+
+                                      // Send REST proposal to server (server will notify the doctor)
+                                      const resp = await fetch(
+                                        `http://localhost:5000/api/patient/appointments/${it._id}/reschedule-propose`,
+                                        {
+                                          method: "POST",
+                                          headers: {
+                                            "Content-Type": "application/json",
+                                            Authorization: `Bearer ${localStorage.getItem(
+                                              "token"
+                                            )}`,
+                                          },
+                                          body: JSON.stringify({
+                                            patientId: user?._id,
+                                            proposedSlots: slots,
+                                            message:
+                                              "Bệnh nhân yêu cầu đổi lịch. Vui lòng xem các khung rảnh của bác sĩ.",
+                                          }),
+                                        }
+                                      );
+                                      if (!resp.ok)
+                                        throw new Error("Gửi đề xuất thất bại");
+                                      alert(
+                                        "Đã gửi yêu cầu đổi lịch tới bác sĩ. Bác sĩ sẽ trả lời bằng tin nhắn hoặc đề xuất khung mới."
+                                      );
+                                      // open chat so patient can follow up
+                                      setChatAppointment(it);
+                                      setChatOpen(true);
+                                    } catch (e) {
+                                      console.error(e);
+                                      alert(
+                                        e instanceof Error ? e.message : "Lỗi"
+                                      );
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                                >
+                                  Đổi lịch
+                                </button>
+                              )}
+
+                              {/* Inline accept button when doctor proposed a new schedule */}
+                              {it.status === "doctor_reschedule" && (
+                                <button
+                                  onClick={async () => {
+                                    try {
+                                      if (!user?._id) {
+                                        alert("Vui lòng đăng nhập");
+                                        return;
+                                      }
+                                      if (
+                                        !confirm(
+                                          "Bạn chắc chắn muốn chấp nhận lịch mới do bác sĩ đề xuất?"
+                                        )
+                                      )
+                                        return;
+                                      const resp = await fetch(
+                                        `http://localhost:5000/api/doctor/appointments/${it._id}/accept-reschedule`,
+                                        {
+                                          method: "POST",
+                                          headers: {
+                                            "Content-Type": "application/json",
+                                            Authorization: `Bearer ${localStorage.getItem(
+                                              "token"
+                                            )}`,
+                                          },
+                                          body: JSON.stringify({
+                                            patientId: user._id,
+                                          }),
+                                        }
+                                      );
+                                      if (!resp.ok) {
+                                        let msg =
+                                          "Không thể chấp nhận lịch mới";
+                                        try {
+                                          const j = await resp.json();
+                                          msg =
+                                            j?.message ||
+                                            JSON.stringify(j) ||
+                                            msg;
+                                        } catch {
+                                          try {
+                                            msg = await resp.text();
+                                          } catch {
+                                            /* ignore */
+                                          }
+                                        }
+                                        throw new Error(msg);
+                                      }
+                                      alert(
+                                        "Đã chấp nhận lịch mới. Danh sách sẽ được cập nhật."
+                                      );
+                                      window.location.reload();
+                                    } catch (e) {
+                                      console.error(e);
+                                      alert(
+                                        e instanceof Error ? e.message : "Lỗi"
+                                      );
+                                    }
+                                  }}
+                                  className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2 py-1 text-white hover:bg-teal-700"
+                                >
+                                  Đồng ý lịch mới
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </li>
@@ -624,11 +1070,12 @@ END:VCALENDAR`;
                 </ol>
               </section>
             ))}
+
             {limit < filtered.length && (
               <div className="flex justify-center">
                 <button
                   onClick={() => setLimit((l) => l + PAGE)}
-                  className="rounded-lg border border-gray-300 px-4 py-2 hover:bg-gray-50"
+                  className="rounded-lg bg-white px-4 py-2 text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50"
                 >
                   Tải thêm
                 </button>
@@ -638,6 +1085,7 @@ END:VCALENDAR`;
         )}
       </div>
 
+      {/* ============ Modal chi tiết ============ */}
       <Modal
         open={!!detail}
         onClose={() => setDetail(null)}
@@ -647,29 +1095,29 @@ END:VCALENDAR`;
           <div className="space-y-5 text-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-gray-100 to-gray-200 text-base font-semibold text-gray-700">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-base font-semibold text-slate-700">
                   {initials(detail.doctorId?.name)}
                 </div>
                 <div>
-                  <div className="text-base font-semibold text-gray-900">
+                  <div className="text-base font-semibold text-slate-900">
                     {detail.doctorId?.name || "Bác sĩ"}
                   </div>
-                  <div className="text-xs text-gray-600">
-                    {detail.doctorId?.specialty || ""}
-                    {detail.doctorId?.workplace
-                      ? ` • ${detail.doctorId.workplace}`
-                      : ""}
+                  <div className="text-xs text-slate-600">
+                    {[detail.doctorId?.specialty, detail.doctorId?.workplace]
+                      .filter(Boolean)
+                      .join(" • ")}
                   </div>
                 </div>
               </div>
+
               <div className="text-right">
-                <div className="text-xs text-gray-500">Trạng thái</div>
+                <div className="text-xs text-slate-500">Trạng thái</div>
                 <div
                   className={`inline-block rounded-full px-2 py-1 text-xs font-medium ${
                     STATUS_META[
                       (detail.status as StatusKey) in STATUS_META
                         ? (detail.status as StatusKey)
-                        : "pending"
+                        : "booked"
                     ].badge
                   }`}
                 >
@@ -677,80 +1125,243 @@ END:VCALENDAR`;
                     STATUS_META[
                       (detail.status as StatusKey) in STATUS_META
                         ? (detail.status as StatusKey)
-                        : "pending"
+                        : "booked"
                     ].label
                   }
+                </div>
+                <div className="mt-2">
+                  <div className="text-xs text-slate-500">Hình thức</div>
+                  <span
+                    className={`inline-block rounded-full px-2 py-1 text-xs ring-1 ${
+                      detail.mode === "online"
+                        ? "bg-teal-50 text-teal-700 ring-teal-200"
+                        : "bg-slate-50 text-slate-700 ring-slate-200"
+                    }`}
+                  >
+                    {detail.mode === "online" ? "Trực tuyến" : "Tại cơ sở"}
+                  </span>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-xl border border-gray-200 p-3">
-              <div className="mb-2 text-xs text-gray-500">Tiến trình</div>
+            <div className="rounded-xl ring-1 ring-slate-200 p-3">
+              <div className="mb-2 text-xs text-slate-500">Tiến trình</div>
               <Stepper
                 current={
                   (detail.status as StatusKey) in STATUS_META
                     ? (detail.status as StatusKey)
-                    : "pending"
+                    : "booked"
                 }
                 cancelled={detail.status === "cancelled"}
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="rounded-xl border border-gray-200 p-3">
-                <div className="mb-2 text-xs text-gray-500">Lịch khám</div>
-                <div className="flex items-center gap-2 text-gray-800">
-                  <FaCalendarAlt className="text-gray-400" />{" "}
+            {/* If doctor proposed a new schedule, show it here */}
+            {detail.status === "doctor_reschedule" &&
+              detail.newScheduleId &&
+              (() => {
+                const ns =
+                  typeof detail.newScheduleId === "string"
+                    ? null
+                    : detail.newScheduleId;
+                return (
+                  <div className="rounded-xl ring-1 ring-amber-200 bg-amber-50 p-3">
+                    <div className="mb-2 text-xs text-amber-700">
+                      Lịch đề xuất
+                    </div>
+                    <div className="text-amber-800">
+                      {ns?.date ||
+                        (typeof detail.newScheduleId === "string"
+                          ? detail.newScheduleId
+                          : "—")}{" "}
+                      {ns
+                        ? `• ${ns.startTime || ""} - ${ns.endTime || ""}`
+                        : ""}
+                    </div>
+                  </div>
+                );
+              })()}
+
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-xl ring-1 ring-slate-200 p-3">
+                <div className="mb-2 text-xs text-slate-500">Lịch khám</div>
+                <div className="flex items-center gap-2 text-slate-800">
+                  <FaCalendarAlt className="text-slate-400" />
                   {formatDate(detail.scheduleId?.date || detail.updatedAt)}
                 </div>
-                <div className="mt-1 flex items-center gap-2 text-gray-800">
-                  <FaClock className="text-gray-400" />{" "}
+                <div className="mt-1 flex items-center gap-2 text-slate-800">
+                  <FaClock className="text-slate-400" />
                   {formatRange(
                     detail.scheduleId?.startTime,
                     detail.scheduleId?.endTime
                   )}
                 </div>
               </div>
-              <div className="rounded-xl border border-gray-200 p-3">
-                <div className="mb-2 text-xs text-gray-500">
-                  Cơ sở & liên hệ
-                </div>
-                <div className="flex items-center gap-2 text-gray-800">
-                  <FaHospital className="text-gray-400" />{" "}
-                  {detail.doctorId?.workplace || "—"}
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-gray-800">
-                  <FaMapMarkerAlt className="text-gray-400" /> Quầy tiếp đón •
-                  Tầng 1
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-gray-800">
-                  <FaPhone className="text-gray-400" /> 1900 0000
-                </div>
-                <div className="mt-1 flex items-center gap-2 text-gray-800">
-                  <FaEnvelope className="text-gray-400" /> support@medicare.vn
+
+              <div className="rounded-xl ring-1 ring-slate-200 p-3">
+                <div className="mb-2 text-xs text-slate-500">Dịch vụ</div>
+                <div className="text-slate-800">
+                  {parseService(detail.note) || "—"}
                 </div>
               </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-gray-200 p-3">
-                <div className="mb-2 text-xs text-gray-500">Triệu chứng</div>
-                <div className="whitespace-pre-wrap text-gray-800">
+              <div className="rounded-xl ring-1 ring-slate-200 p-3">
+                <div className="mb-2 text-xs text-slate-500">Triệu chứng</div>
+                <div className="whitespace-pre-wrap text-slate-800">
                   {detail.symptoms || "—"}
                 </div>
               </div>
-              <div className="rounded-xl border border-gray-200 p-3">
-                <div className="mb-2 text-xs text-gray-500">Ghi chú</div>
-                <div className="whitespace-pre-wrap text-gray-800">
+              <div className="rounded-xl ring-1 ring-slate-200 p-3">
+                <div className="mb-2 text-xs text-slate-500">Ghi chú</div>
+                <div className="whitespace-pre-wrap text-slate-800">
                   {detail.note || "—"}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-end gap-2">
+              {/* View Appointment Slip button */}
+              <a
+                href={`/appointments/${detail._id}/slip`}
+                className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700"
+              >
+                <FaFilePdf /> Xem giấy khám bệnh
+              </a>
+
+              {(detail.status === "paid" || detail.status === "confirmed") && (
+                <button
+                  onClick={async () => {
+                    // Open chat modal prefilled
+                    setChatAppointment(detail);
+                    setChatOpen(true);
+
+                    // Offer quick REST-based reschedule proposal as well
+                    try {
+                      const raw = window.prompt(
+                        "Nhập các khung giờ đề xuất (tách bằng dấu phẩy) hoặc để trống để chỉ gửi tin nhắn:",
+                        ""
+                      );
+                      if (raw === null) return; // cancelled
+                      const slots = raw
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean);
+                      if (slots.length === 0) return; // user chose to only chat
+
+                      // send REST proposal
+                      const resp = await fetch(
+                        `http://localhost:5000/api/patient/appointments/${detail._id}/reschedule-propose`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem(
+                              "token"
+                            )}`,
+                          },
+                          body: JSON.stringify({
+                            patientId: user?._id,
+                            proposedSlots: slots,
+                            message: "Bệnh nhân đề nghị đổi lịch",
+                          }),
+                        }
+                      );
+                      if (!resp.ok) throw new Error("Gửi đề xuất thất bại");
+                      alert("Đề xuất đổi lịch đã gửi tới bác sĩ");
+                    } catch (e) {
+                      console.error(e);
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  Tôi muốn đổi lịch
+                </button>
+              )}
+
+              {/* Patient accepts a doctor's reschedule proposal */}
+              {detail.status === "doctor_reschedule" && (
+                <button
+                  onClick={async () => {
+                    try {
+                      if (!user?._id)
+                        throw new Error("Người dùng chưa đăng nhập");
+                      const resp = await fetch(
+                        `http://localhost:5000/api/doctor/appointments/${detail._id}/accept-reschedule`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem(
+                              "token"
+                            )}`,
+                          },
+                          body: JSON.stringify({ patientId: user._id }),
+                        }
+                      );
+                      if (!resp.ok) {
+                        const text = await resp.text().catch(() => "");
+                        throw new Error(text || "Không thể chấp nhận lịch mới");
+                      }
+                      alert(
+                        "Bạn đã chấp nhận lịch mới. Hệ thống sẽ cập nhật lịch hẹn."
+                      );
+                      window.location.reload();
+                    } catch (e) {
+                      console.error(e);
+                      alert(e instanceof Error ? e.message : "Lỗi");
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700"
+                >
+                  Đồng ý lịch mới
+                </button>
+              )}
+
+              {(detail.status === "pending_payment" ||
+                detail.status === "await_payment") && (
+                <a
+                  href={`/payments/${detail._id}`}
+                  className="inline-flex items-center gap-2 rounded-lg bg-teal-600 px-3 py-2 text-sm text-white hover:bg-teal-700"
+                >
+                  Thanh toán ngay
+                </a>
+              )}
+
+              {/* Patient check-in button */}
+              {detail.status !== "cancelled" && (
+                <button
+                  onClick={async () => {
+                    try {
+                      const resp = await fetch(
+                        `http://localhost:5000/api/patient/appointments/${detail._id}/checkin`,
+                        {
+                          method: "POST",
+                          headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${localStorage.getItem(
+                              "token"
+                            )}`,
+                          },
+                          body: JSON.stringify({ by: "patient" }),
+                        }
+                      );
+                      if (!resp.ok) throw new Error("Check-in failed");
+                      alert("Đã ghi nhận: Bạn đã đến");
+                      window.location.reload();
+                    } catch (e) {
+                      alert(e instanceof Error ? e.message : "Lỗi check-in");
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  Tôi đã đến
+                </button>
+              )}
               <button
                 onClick={() => downloadICS(detail)}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:bg-slate-50"
               >
                 <FaCalendarPlus /> Thêm vào lịch
               </button>
@@ -766,27 +1377,41 @@ END:VCALENDAR`;
                         detail.scheduleId?.endTime
                       )} - ${detail.doctorId?.name}`,
                     });
-                  } catch {}
+                  } catch (e) {
+                    console.error("Share failed", e);
+                  }
                 }}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:bg-slate-50"
               >
                 <FaShareAlt /> Chia sẻ
               </button>
               <button
                 onClick={() => window.print()}
-                className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-3 py-2 text-sm hover:bg-gray-50"
+                className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-slate-200 hover:bg-slate-50"
               >
                 <FaFilePdf /> In / Lưu PDF
               </button>
             </div>
 
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-slate-500">
               Tạo lúc {formatDate(detail.createdAt)} • Cập nhật{" "}
               {formatDate(detail.updatedAt)} • Mã: {detail._id}
             </div>
           </div>
         )}
       </Modal>
+
+      <ChatModal
+        isOpen={chatOpen}
+        onClose={() => {
+          setChatOpen(false);
+          setChatAppointment(null);
+        }}
+        appointment={chatModalPayload}
+        doctorName={chatAppointment?.doctorId?.name || "Bác sĩ"}
+        onSendMessage={handleSendMessage}
+        initialTemplate={"reschedule_proposal"}
+      />
     </div>
   );
 }

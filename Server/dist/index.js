@@ -17,13 +17,19 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
+const http_1 = __importDefault(require("http"));
+const socket_1 = require("./utils/socket");
+const markExpiredInvoices_1 = require("./utils/markExpiredInvoices");
 // Import modules
 const routes_1 = __importDefault(require("./modules/admin/routes"));
 const routes_2 = __importDefault(require("./modules/patient/routes"));
 const routes_3 = __importDefault(require("./modules/doctor/routes"));
 const routes_4 = require("./modules/shared/routes");
+const pricingRoutes_1 = __importDefault(require("./modules/pricing/routes/pricingRoutes"));
+const utils_1 = require("./shared/utils");
 dotenv_1.default.config();
 const app = (0, express_1.default)();
+const server = http_1.default.createServer(app);
 const PORT = process.env.PORT || 5000;
 // Middleware
 app.use((0, cors_1.default)());
@@ -37,7 +43,13 @@ app.use("/api/patient", routes_2.default);
 app.use("/api/doctor", routes_3.default);
 // Shared routes (công khai)
 app.use("/api/specialties", routes_4.specialtyRoutes);
+app.use("/api/services", routes_4.serviceRoutes);
 app.use("/api/auth", routes_4.authRoutes);
+app.use("/api/messages", routes_4.messageRoutes);
+// Notifications
+const notifications_1 = __importDefault(require("./modules/shared/routes/notifications"));
+app.use("/api/notifications", notifications_1.default);
+app.use("/api/pricing", pricingRoutes_1.default);
 // Health check
 app.get("/health", (req, res) => {
     res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
@@ -55,12 +67,29 @@ mongoose_1.default
     .connect(process.env.MONGO_URI)
     .then(() => __awaiter(void 0, void 0, void 0, function* () {
     console.log("Kết nối MongoDB thành công!");
-    app.listen(PORT, () => {
+    server.listen(PORT, () => {
         console.log(`Server đang chạy tại http://localhost:${PORT}`);
         console.log(`Admin Auth: http://localhost:${PORT}/api/admin/auth`);
         console.log(`Patient Auth: http://localhost:${PORT}/api/patient/auth`);
         console.log(`Doctor Auth: http://localhost:${PORT}/api/doctor/auth`);
         console.log(`Shared Auth: http://localhost:${PORT}/api/auth`);
     });
+    // initialize socket.io
+    try {
+        (0, socket_1.initSocket)(server);
+        console.log("Socket.IO initialized");
+    }
+    catch (err) {
+        console.error("Socket init failed", err);
+    }
+    // Start background monitor to mark expired invoices and release holds
+    try {
+        (0, markExpiredInvoices_1.startExpiredInvoiceMonitor)();
+    }
+    catch (e) {
+        console.error("Failed to start expired invoice monitor", e);
+    }
+    // Kiểm tra mailer (không chặn server nếu lỗi)
+    (0, utils_1.verifyEmailTransport)().catch(() => { });
 }))
     .catch((err) => console.error("Lỗi kết nối MongoDB:", err));

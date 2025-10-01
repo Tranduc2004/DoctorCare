@@ -24,13 +24,19 @@ import {
   Scale,
   Ruler,
   Users,
+  X,
 } from "lucide-react";
+import { uploadIdDocument, uploadInsuranceCard } from "../../../api/uploadApi";
+import ImagePreviewUpload from "../../../components/ImagePreviewUpload";
 
 // Types for stronger typing (optional based on your backend)
 type Profile = {
   fullName?: string;
   dob?: string; // YYYY-MM-DD
   gender?: "male" | "female" | "other" | "";
+  idNumber?: string; // CCCD/CMND number
+  idType?: "cccd" | "cmnd" | "passport" | ""; // Type of ID
+  idImageUrl?: string; // URL of uploaded ID image
   address?: string;
   phone?: string;
   email?: string;
@@ -43,6 +49,7 @@ type Profile = {
   preferredLanguage?: string;
   emergencyContactName?: string;
   emergencyContactPhone?: string;
+  emergencyContactRelation?: string;
   consentShareRecords?: boolean; // chia sẻ hồ sơ cho bác sĩ khám
   consentNotifications?: boolean; // nhận nhắc lịch, đơn thuốc
 };
@@ -53,6 +60,14 @@ type Insurance = {
   validFrom?: string; // YYYY-MM-DD
   validTo?: string; // YYYY-MM-DD
   regionCode?: string; // mã KCB ban đầu
+  coverageRate?: number | undefined; // Mức hưởng BHYT (80%, 95%, 100%)
+  imageUrl?: string; // URL of uploaded insurance card
+  managementCode?: string; // Mã đơn vị quản lý
+  participantType?: string; // Đối tượng tham gia
+  householdRole?: string; // Mối quan hệ chủ hộ
+  notes?: string; // Ghi chú
+  verificationStatus?: "pending" | "verified" | "rejected" | "expired"; // Trạng thái duyệt
+  rejectionReason?: string; // Lý do từ chối
 };
 
 export default function PatientProfilePage() {
@@ -108,6 +123,9 @@ export default function PatientProfilePage() {
           fullName: data?.profile?.fullName || user?.name || "",
           dob: data?.profile?.dob || "",
           gender: data?.profile?.gender || "",
+          idNumber: data?.profile?.idNumber || "",
+          idType: data?.profile?.idType || "",
+          idImageUrl: data?.profile?.idImageUrl || "",
           address: data?.profile?.address || "",
           phone: data?.profile?.phone || "",
           email: data?.profile?.email || user?.email || "",
@@ -120,6 +138,8 @@ export default function PatientProfilePage() {
           preferredLanguage: data?.profile?.preferredLanguage || "vi",
           emergencyContactName: data?.profile?.emergencyContactName || "",
           emergencyContactPhone: data?.profile?.emergencyContactPhone || "",
+          emergencyContactRelation:
+            data?.profile?.emergencyContactRelation || "",
           consentShareRecords: Boolean(
             data?.profile?.consentShareRecords ?? true
           ),
@@ -133,6 +153,14 @@ export default function PatientProfilePage() {
           validFrom: data?.insurance?.validFrom || "",
           validTo: data?.insurance?.validTo || "",
           regionCode: data?.insurance?.regionCode || "",
+          coverageRate: data?.insurance?.coverageRate || null,
+          imageUrl: data?.insurance?.imageUrl || "",
+          managementCode: data?.insurance?.managementCode || "",
+          participantType: data?.insurance?.participantType || "",
+          householdRole: data?.insurance?.householdRole || "",
+          notes: data?.insurance?.notes || "",
+          verificationStatus: data?.insurance?.verificationStatus || "pending",
+          rejectionReason: data?.insurance?.rejectionReason || "",
         });
       } catch {
         toast.error("Không tải được hồ sơ");
@@ -140,16 +168,61 @@ export default function PatientProfilePage() {
         setLoading(false);
       }
     })();
-  }, [canUse, user?._id]);
+  }, [canUse, user?._id, user?.name, user?.email]);
+
+  const [uploadingId, setUploadingId] = useState(false);
+  const [uploadingInsurance, setUploadingInsurance] = useState(false);
+
+  const handleIdUpload = async (file: File) => {
+    try {
+      setUploadingId(true);
+      const response = await uploadIdDocument(file);
+      setProfile((prev) => ({ ...prev, idImageUrl: response.filePath }));
+      toast.success("Tải lên CCCD/CMND thành công");
+    } catch (error) {
+      console.error("Upload ID error:", error);
+      toast.error("Lỗi khi tải lên CCCD/CMND");
+      throw error;
+    } finally {
+      setUploadingId(false);
+    }
+  };
+
+  const handleInsuranceUpload = async (file: File) => {
+    try {
+      setUploadingInsurance(true);
+      const response = await uploadInsuranceCard(file);
+      console.log("Insurance upload response:", response);
+      setInsurance((prev) => ({ ...prev, imageUrl: response.filePath }));
+      toast.success("Tải lên thẻ BHYT thành công");
+    } catch (error) {
+      console.error("Upload insurance error:", error);
+      toast.error("Lỗi khi tải lên thẻ BHYT");
+      throw error; // Re-throw error để component upload có thể xử lý
+    } finally {
+      setUploadingInsurance(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!user?._id || !canSave) return;
     try {
       setSaving(true);
       await saveMyProfile(user._id, profile);
-      await saveMyInsurance(user._id, insurance);
-      toast.success("Đã lưu hồ sơ & BHYT");
-    } catch (e) {
+      console.log("Saving insurance with imageUrl:", insurance.imageUrl);
+      const insuranceResult = await saveMyInsurance(user._id, insurance);
+      console.log("Insurance save result:", insuranceResult);
+
+      // Show different messages for profile and insurance
+      toast.success("Đã lưu hồ sơ cá nhân");
+
+      if (insuranceResult?.message) {
+        toast.info(insuranceResult.message);
+      } else {
+        toast.success("Đã lưu thông tin BHYT");
+      }
+    } catch (error) {
+      console.error("Save error:", error);
       toast.error("Lưu thất bại");
     } finally {
       setSaving(false);
@@ -226,7 +299,7 @@ export default function PatientProfilePage() {
                   </h2>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col gap-3">
                     <input
                       className="w-full rounded-lg border border-slate-300 px-3 py-2"
                       placeholder="Họ tên"
@@ -234,6 +307,17 @@ export default function PatientProfilePage() {
                       onChange={(e) =>
                         setProfile({ ...profile, fullName: e.target.value })
                       }
+                    />
+                    <ImagePreviewUpload
+                      onUpload={handleIdUpload}
+                      imageUrl={
+                        profile.idImageUrl
+                          ? `http://localhost:5000/${profile.idImageUrl}`
+                          : undefined
+                      }
+                      label="ảnh CCCD/CMND"
+                      loading={uploadingId}
+                      accept="image/*"
                     />
                   </div>
                   <div className="flex items-center gap-2">
@@ -409,13 +493,37 @@ export default function PatientProfilePage() {
 
               {/* Insurance */}
               <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="p-2 rounded-lg bg-indigo-600 text-white">
-                    <IdCard className="h-5 w-5" />
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-lg bg-indigo-600 text-white">
+                      <IdCard className="h-5 w-5" />
+                    </div>
+                    <h2 className="text-lg font-semibold text-slate-900">
+                      Bảo hiểm y tế
+                    </h2>
                   </div>
-                  <h2 className="text-lg font-semibold text-slate-900">
-                    Bảo hiểm y tế
-                  </h2>
+                  {insurance.provider && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-slate-500">
+                        Trạng thái:
+                      </span>
+                      <span
+                        className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          insurance.verificationStatus === "verified"
+                            ? "bg-green-100 text-green-800"
+                            : insurance.verificationStatus === "rejected"
+                            ? "bg-red-100 text-red-800"
+                            : "bg-yellow-100 text-yellow-800"
+                        }`}
+                      >
+                        {insurance.verificationStatus === "verified"
+                          ? "Đã duyệt"
+                          : insurance.verificationStatus === "rejected"
+                          ? "Bị từ chối"
+                          : "Chờ duyệt"}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <input
@@ -428,7 +536,7 @@ export default function PatientProfilePage() {
                   />
                   <input
                     className="rounded-lg border border-slate-300 px-3 py-2"
-                    placeholder="Số thẻ"
+                    placeholder="Số thẻ BHYT (10 ký tự)"
                     value={insurance.policyNumber || ""}
                     onChange={(e) =>
                       setInsurance({
@@ -466,20 +574,128 @@ export default function PatientProfilePage() {
                       }
                     />
                   </div>
+
+                  {/* Insurance Card Upload */}
+                  <div className="md:col-span-2">
+                    <ImagePreviewUpload
+                      onUpload={handleInsuranceUpload}
+                      imageUrl={
+                        insurance.imageUrl
+                          ? `http://localhost:5000/${insurance.imageUrl}`
+                          : undefined
+                      }
+                      label="ảnh thẻ BHYT"
+                      loading={uploadingInsurance}
+                      accept="image/*"
+                    />
+                  </div>
+
+                  {/* Additional Insurance Info */}
                   <input
-                    className="rounded-lg border border-slate-300 px-3 py-2 md:col-span-2"
+                    className="rounded-lg border border-slate-300 px-3 py-2"
                     placeholder="Mã KCB ban đầu"
                     value={insurance.regionCode || ""}
                     onChange={(e) =>
                       setInsurance({ ...insurance, regionCode: e.target.value })
                     }
                   />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      min="0"
+                      max="100"
+                      className="w-24 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Mức %"
+                      value={insurance.coverageRate || ""}
+                      onChange={(e) =>
+                        setInsurance({
+                          ...insurance,
+                          coverageRate: e.target.value
+                            ? Number(e.target.value)
+                            : undefined,
+                        })
+                      }
+                    />
+                    <span className="text-slate-500">%</span>
+                    <input
+                      className="flex-1 rounded-lg border border-slate-300 px-3 py-2"
+                      placeholder="Mã đơn vị quản lý"
+                      value={insurance.managementCode || ""}
+                      onChange={(e) =>
+                        setInsurance({
+                          ...insurance,
+                          managementCode: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+
+                  <select
+                    className="rounded-lg border border-slate-300 px-3 py-2"
+                    value={insurance.participantType || ""}
+                    onChange={(e) =>
+                      setInsurance({
+                        ...insurance,
+                        participantType: e.target.value,
+                      })
+                    }
+                  >
+                    <option value="">Đối tượng tham gia</option>
+                    <option value="student">Học sinh - Sinh viên</option>
+                    <option value="employee">Người lao động</option>
+                    <option value="household">Hộ gia đình</option>
+                    <option value="poor">Người nghèo</option>
+                    <option value="near-poor">Cận nghèo</option>
+                    <option value="pension">Hưu trí</option>
+                    <option value="other">Khác</option>
+                  </select>
+
+                  <input
+                    className="rounded-lg border border-slate-300 px-3 py-2"
+                    placeholder="Quan hệ chủ hộ (nếu theo hộ gia đình)"
+                    value={insurance.householdRole || ""}
+                    onChange={(e) =>
+                      setInsurance({
+                        ...insurance,
+                        householdRole: e.target.value,
+                      })
+                    }
+                  />
+
+                  <textarea
+                    rows={2}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 md:col-span-2"
+                    placeholder="Ghi chú (ví dụ: BHYT tự nguyện, chuyển tuyến...)"
+                    value={insurance.notes || ""}
+                    onChange={(e) =>
+                      setInsurance({ ...insurance, notes: e.target.value })
+                    }
+                  />
                 </div>
-                {/* Small helper */}
+
+                {/* Helper */}
                 <div className="mt-3 text-xs text-slate-500 flex items-center gap-2">
                   <ShieldQuestion className="h-4 w-4" /> Điền chính xác để hưởng
                   quyền lợi BHYT khi khám.
                 </div>
+
+                {/* Rejection reason if rejected */}
+                {insurance.verificationStatus === "rejected" &&
+                  insurance.rejectionReason && (
+                    <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                      <div className="flex items-start gap-2">
+                        <X className="h-4 w-4 text-red-500 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <p className="text-sm font-medium text-red-800">
+                            BHYT bị từ chối
+                          </p>
+                          <p className="text-xs text-red-600 mt-1">
+                            {insurance.rejectionReason}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
               </section>
             </div>
 

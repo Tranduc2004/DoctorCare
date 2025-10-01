@@ -27,6 +27,11 @@ interface Appointment {
     email: string;
     phone: string;
   };
+  patientInfo?: {
+    name: string;
+    phone: string;
+    email: string;
+  };
   scheduleId: {
     _id: string;
     date: string;
@@ -45,6 +50,8 @@ interface ChatModalProps {
   appointment: Appointment | null;
   doctorName: string;
   onSendMessage?: (message: string, appointmentId: string) => void;
+  initialTemplate?: string;
+  initialMessage?: string;
 }
 
 const ChatModal: React.FC<ChatModalProps> = ({
@@ -53,6 +60,8 @@ const ChatModal: React.FC<ChatModalProps> = ({
   appointment,
   doctorName,
   onSendMessage,
+  initialTemplate,
+  initialMessage,
 }) => {
   const [selectedTemplate, setSelectedTemplate] = useState<string>("");
   const [customMessage, setCustomMessage] = useState<string>("");
@@ -63,9 +72,83 @@ const ChatModal: React.FC<ChatModalProps> = ({
   const [copied, setCopied] = useState<boolean>(false);
   // local editing flag (future use)
 
+  // ref to the variables panel scroll container so we can auto-scroll focused inputs into view
+  const varsScrollRef = React.useRef<HTMLDivElement | null>(null);
+
+  const handleVarsFocusCapture = (e: React.FocusEvent) => {
+    // If focus moves to an input/textarea/select inside the variables editor, scroll it into view
+    const target = e.target as HTMLElement | null;
+    if (!target || !varsScrollRef.current) return;
+    // Only act for form controls
+    const tag = target.tagName.toLowerCase();
+    if (!["input", "textarea", "select"].includes(tag)) return;
+
+    // Compute offset relative to container
+    const container = varsScrollRef.current;
+    const targetRect = target.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const offset = 12; // small padding
+    // If target is below the visible area, scroll so it's visible with offset
+    if (targetRect.bottom > containerRect.bottom - offset) {
+      const scrollBy = targetRect.bottom - containerRect.bottom + offset;
+      container.scrollBy({ top: scrollBy, behavior: "smooth" });
+    }
+    // If target is above the visible area, scroll up
+    if (targetRect.top < containerRect.top + offset) {
+      const scrollBy = targetRect.top - containerRect.top - offset;
+      container.scrollBy({ top: scrollBy, behavior: "smooth" });
+    }
+  };
+
+  // When entering edit mode, focus the first input inside the variables editor so
+  // the browser will bring it into view. This helps on small screens where the
+  // editor may be partially off-screen and the user can't manually scroll down.
+  useEffect(() => {
+    if (!previewMode && varsScrollRef.current) {
+      // run after paint
+      setTimeout(() => {
+        const c = varsScrollRef.current!;
+        // try to focus first control
+        const first = c.querySelector<
+          HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+        >("input, textarea, select");
+        if (first) {
+          try {
+            first.focus({ preventScroll: false });
+          } catch {
+            // some browsers may not support options
+            first.focus();
+          }
+        }
+      }, 60);
+    }
+  }, [previewMode]);
+
   // Khởi tạo biến mặc định khi appointment thay đổi
   useEffect(() => {
     if (appointment) {
+      const parseService = (note?: string) => {
+        if (!note) return "";
+        const m = note.match(/\[Dịch vụ\]\s*([^|]+)/);
+        return m?.[1]?.trim() || "";
+      };
+
+      const getServiceRequirements = (note?: string) => {
+        const service = parseService(note).toLowerCase();
+        if (service.includes("xét nghiệm") || service.includes("máu")) {
+          return SERVICE_REQUIREMENTS.xet_nghiem_mau;
+        } else if (service.includes("sản") || service.includes("phụ")) {
+          return SERVICE_REQUIREMENTS.san_phu;
+        } else if (service.includes("tim") || service.includes("mạch")) {
+          return SERVICE_REQUIREMENTS.tim_mach;
+        } else if (service.includes("dinh") || service.includes("dưỡng")) {
+          return SERVICE_REQUIREMENTS.dinh_duong;
+        } else if (service.includes("tâm") || service.includes("lý")) {
+          return SERVICE_REQUIREMENTS.tam_ly;
+        }
+        return SERVICE_REQUIREMENTS.kham_tong_quat;
+      };
+
       const defaultVars: Partial<TemplateVariables> = {
         patient_name: appointment.patientId.name,
         doctor_name: doctorName,
@@ -81,30 +164,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
         hotline: "1900-1234",
       };
       setTemplateVariables(defaultVars);
+      // If caller provided an initial template or message, apply it
+      if (initialTemplate) setSelectedTemplate(initialTemplate);
+      if (initialMessage) setCustomMessage(initialMessage);
     }
-  }, [appointment, doctorName]);
-
-  const parseService = (note?: string) => {
-    if (!note) return "";
-    const m = note.match(/\[Dịch vụ\]\s*([^|]+)/);
-    return m?.[1]?.trim() || "";
-  };
-
-  const getServiceRequirements = (note?: string) => {
-    const service = parseService(note).toLowerCase();
-    if (service.includes("xét nghiệm") || service.includes("máu")) {
-      return SERVICE_REQUIREMENTS.xet_nghiem_mau;
-    } else if (service.includes("sản") || service.includes("phụ")) {
-      return SERVICE_REQUIREMENTS.san_phu;
-    } else if (service.includes("tim") || service.includes("mạch")) {
-      return SERVICE_REQUIREMENTS.tim_mach;
-    } else if (service.includes("dinh") || service.includes("dưỡng")) {
-      return SERVICE_REQUIREMENTS.dinh_duong;
-    } else if (service.includes("tâm") || service.includes("lý")) {
-      return SERVICE_REQUIREMENTS.tam_ly;
-    }
-    return SERVICE_REQUIREMENTS.kham_tong_quat;
-  };
+  }, [appointment, doctorName, initialTemplate, initialMessage]);
 
   const getCurrentTemplate = (): ChatTemplate | null => {
     return selectedTemplate ? CHAT_TEMPLATES[selectedTemplate] : null;
@@ -221,20 +285,19 @@ const ChatModal: React.FC<ChatModalProps> = ({
     html = html.replace(/\n/g, "<br/>");
     return html;
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="relative z-10 w-full max-w-6xl max-h-[90vh] rounded-2xl bg-white shadow-xl overflow-hidden">
+      <div className="relative z-10 w-full max-w-6xl max-h-[90vh] rounded-2xl bg-white shadow-xl overflow-hidden ">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4  bg-gradient-to-r from-blue-500 to-teal-400">
           <div className="flex items-center gap-3">
-            <MessageSquare className="h-6 w-6 text-blue-600" />
+            <MessageSquare className="h-6 w-6 text-white" />
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">
+              <h3 className="text-lg font-semibold text-white">
                 Chat với bệnh nhân
               </h3>
-              <p className="text-sm text-slate-600">
+              <p className="text-sm text-white">
                 {appointment.patientId.name} •{" "}
                 {new Date(
                   appointment.scheduleId.date + "T00:00:00"
@@ -243,9 +306,17 @@ const ChatModal: React.FC<ChatModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {/* Toggle preview */}
             <button
               onClick={() => setPreviewMode(!previewMode)}
-              className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100"
+              className={[
+                "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all",
+                previewMode
+                  ? // Secondary khi đang xem trước
+                    "text-slate-700 border border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300 hover:shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-300/60"
+                  : // Primary khi đang ở chế độ chỉnh sửa
+                    "text-white shadow-sm bg-gradient-to-r from-blue-500 to-teal-400 hover:from-blue-600 hover:to-teal-500 active:from-blue-700 active:to-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-300/60",
+              ].join(" ")}
             >
               {previewMode ? (
                 <EyeOff className="h-4 w-4" />
@@ -254,9 +325,15 @@ const ChatModal: React.FC<ChatModalProps> = ({
               )}
               {previewMode ? "Chỉnh sửa" : "Xem trước"}
             </button>
+
+            {/* Close */}
             <button
               onClick={onClose}
-              className="rounded-full p-2 text-slate-500 hover:bg-slate-100"
+              aria-label="Đóng"
+              title="Đóng"
+              className="rounded-full p-2 text-slate-500 transition-colors
+               hover:text-slate-700 hover:bg-slate-100 active:bg-slate-200
+               focus:outline-none focus:ring-2 focus:ring-teal-300/60"
             >
               <X className="h-5 w-5" />
             </button>
@@ -415,7 +492,11 @@ const ChatModal: React.FC<ChatModalProps> = ({
               /* Edit Mode */
               <div className="flex-1 flex flex-col">
                 {/* Variables Editor */}
-                <div className="flex-1 p-6 overflow-y-auto">
+                <div
+                  className="flex-1 p-6 overflow-y-auto"
+                  ref={varsScrollRef}
+                  onFocusCapture={handleVarsFocusCapture}
+                >
                   <div className="max-w-2xl mx-auto">
                     <h4 className="mb-4 font-semibold text-slate-900">
                       Chỉnh sửa biến

@@ -46,10 +46,22 @@ export const verifyDoctorToken: RequestHandler = (
 
     next();
   } catch (error) {
-    console.error("Doctor token verification error:", error);
-    res.status(401).json({
+    // Provide clearer response for expired tokens and avoid noisy stack logs
+    if (error && (error as any).name === "TokenExpiredError") {
+      console.warn("Doctor token expired:", (error as any).expiredAt);
+      return res.status(401).json({
+        success: false,
+        message: "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        expiredAt: (error as any).expiredAt,
+      });
+    }
+    console.warn(
+      "Doctor token verification error:",
+      (error && (error as any).message) || error
+    );
+    return res.status(401).json({
       success: false,
-      message: "Token không hợp lệ hoặc đã hết hạn",
+      message: "Token không hợp lệ",
     });
   }
 };

@@ -12,13 +12,18 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.updateSymptoms = exports.cancelAppointment = exports.getAppointmentHistory = exports.getPatientAppointments = exports.createAppointment = void 0;
+exports.checkinAppointment = exports.extensionConsent = exports.extendAppointment = exports.updateSymptoms = exports.cancelAppointment = exports.getAppointmentHistory = exports.getPatientAppointments = exports.createAppointment = void 0;
 const Appointment_1 = __importDefault(require("../models/Appointment"));
+const notificationService_1 = require("../../../shared/services/notificationService");
 const DoctorSchedule_1 = __importDefault(require("../../doctor/models/DoctorSchedule"));
+const appointment_1 = require("../../../shared/types/appointment");
+const payment_1 = require("../../../shared/constants/payment");
+const mongoose_1 = __importDefault(require("mongoose"));
 // Patient: Tạo lịch hẹn mới
 const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c;
     try {
-        const { patientId, doctorId, scheduleId, symptoms, note } = req.body;
+        const { patientId, doctorId, scheduleId, symptoms, note, appointmentTime, mode, } = req.body;
         if (!patientId || !doctorId || !scheduleId) {
             res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
             return;
@@ -32,17 +37,98 @@ const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
             res.status(400).json({ message: "Khung giờ đã được đặt" });
             return;
         }
+        // Enforce: one appointment per patient per day
+        const day = schedule.date; // already YYYY-MM-DD
+        const sameDay = yield Appointment_1.default.findOne({
+            patientId,
+            appointmentDate: day,
+            // any status except cancelled
+            status: { $nin: [appointment_1.AppointmentStatus.CANCELLED, appointment_1.AppointmentStatus.CLOSED] },
+        });
+        if (sameDay) {
+            res.status(400).json({ message: "Mỗi ngày chỉ được đặt 1 lịch" });
+            return;
+        }
+        // Optional: one per specialty/day (if doctor has specialty)
+        // We check other appointments this day whose doctor shares same specialty
+        // Note: best-effort to avoid extra joins if model differs
+        const Doctor = require("../../doctor/models/Doctor").default;
+        let specId;
+        try {
+            const doc = yield Doctor.findById(doctorId).select("specialty").lean();
+            const anySpec = (_c = (_b = (_a = doc === null || doc === void 0 ? void 0 : doc.specialty) === null || _a === void 0 ? void 0 : _a.toString) === null || _b === void 0 ? void 0 : _b.call(_a)) !== null && _c !== void 0 ? _c : doc === null || doc === void 0 ? void 0 : doc.specialty;
+            if (anySpec)
+                specId = String(anySpec);
+        }
+        catch (_d) { }
+        if (specId) {
+            const sameDayAppointments = yield Appointment_1.default.find({
+                patientId,
+                status: { $ne: "cancelled" },
+            })
+                .populate({ path: "scheduleId", select: "date" })
+                .populate({ path: "doctorId", select: "specialty" })
+                .lean();
+            const hasSameSpecSameDay = (sameDayAppointments || []).some((a) => {
+                var _a, _b, _c, _d, _e, _f;
+                const d = (_a = a.scheduleId) === null || _a === void 0 ? void 0 : _a.date;
+                const sp = (_e = (_d = (_c = (_b = a.doctorId) === null || _b === void 0 ? void 0 : _b.specialty) === null || _c === void 0 ? void 0 : _c.toString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : (_f = a.doctorId) === null || _f === void 0 ? void 0 : _f.specialty;
+                return d === day && sp && specId && sp === specId;
+            });
+            if (hasSameSpecSameDay) {
+                res
+                    .status(400)
+                    .json({ message: "Mỗi ngày tối đa 1 lịch cho mỗi chuyên khoa" });
+                return;
+            }
+        }
+        // Create appointment as a temporary hold awaiting payment.
+        // Use AWAIT_PAYMENT as the hold status and set a hold expiry PAYMENT_HOLD_MS from now.
+        const holdExpiresAt = new Date(Date.now() + payment_1.PAYMENT_HOLD_MS);
         const appointment = yield Appointment_1.default.create({
             patientId,
             doctorId,
             scheduleId,
-            status: "pending",
+            status: appointment_1.AppointmentStatus.AWAIT_PAYMENT,
+            holdExpiresAt,
+            mode: mode === "online" ? "online" : "offline",
             symptoms,
             note,
+            appointmentTime: appointmentTime || schedule.startTime,
+            appointmentDate: schedule.date,
         });
         schedule.isBooked = true;
         yield schedule.save();
-        res.status(201).json(appointment);
+        // Notify patient and doctor about the new booking (best-effort)
+        try {
+            yield (0, notificationService_1.createNotification)({
+                userId: String(patientId),
+                type: "appointment",
+                title: "Đặt lịch thành công",
+                body: `Bạn đã đặt lịch với bác sĩ. Ngày ${schedule.date} - ${appointment.appointmentTime}`,
+            });
+        }
+        catch (err) {
+            console.error("Notify patient about booking failed:", err);
+        }
+        try {
+            yield (0, notificationService_1.createNotification)({
+                userId: String(doctorId),
+                type: "appointment",
+                title: "Bạn có lịch hẹn mới",
+                body: `Bệnh nhân đã đặt lịch: ${schedule.date} - ${appointment.appointmentTime}`,
+            });
+        }
+        catch (err) {
+            console.error("Notify doctor about booking failed:", err);
+        }
+        // Return hold info so client can show countdown and proceed to payment
+        res.status(201).json({
+            success: true,
+            data: appointment,
+            message: "Đặt lịch tạm giữ, chờ thanh toán",
+            holdExpiresAt,
+        });
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi tạo lịch hẹn", error });
@@ -53,15 +139,58 @@ exports.createAppointment = createAppointment;
 const getPatientAppointments = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { patientId } = req.query;
-        const list = yield Appointment_1.default.find({ patientId })
-            .populate("doctorId", "name specialty workplace")
-            .populate("scheduleId")
+        if (!patientId) {
+            res.status(400).json({ message: "Missing patientId" });
+            return;
+        }
+        // First, release any expired holds found for this patient (best-effort).
+        const now = new Date();
+        const expiredHolds = yield Appointment_1.default.find({
+            patientId,
+            status: appointment_1.AppointmentStatus.AWAIT_PAYMENT,
+            holdExpiresAt: { $lte: now },
+        });
+        for (const h of expiredHolds) {
+            try {
+                // mark as overdue for payment so UI can show proper state
+                h.status = appointment_1.AppointmentStatus.PAYMENT_OVERDUE;
+                yield h.save();
+                if (h.scheduleId) {
+                    yield DoctorSchedule_1.default.findByIdAndUpdate(h.scheduleId, {
+                        isBooked: false,
+                    });
+                }
+            }
+            catch (e) {
+                console.error("Failed to release expired hold", h._id, e);
+            }
+        }
+        const appointments = yield Appointment_1.default.find({ patientId })
+            .populate({
+            path: "doctorId",
+            select: "name specialty workplace",
+            model: "Doctor",
+        })
+            .populate({
+            path: "scheduleId",
+            model: "DoctorSchedule",
+        })
             .sort({ createdAt: -1 })
             .lean();
-        res.json(list);
+        console.log("API - Found appointments:", appointments.length);
+        // Send response with data property
+        res.json({
+            success: true,
+            data: appointments,
+        });
     }
     catch (error) {
-        res.status(500).json({ message: "Lỗi lấy lịch hẹn", error });
+        console.error("API Error:", error);
+        res.status(500).json({
+            success: false,
+            message: "Error fetching appointments",
+            error: error instanceof Error ? error.message : String(error),
+        });
     }
 });
 exports.getPatientAppointments = getPatientAppointments;
@@ -75,7 +204,9 @@ const getAppointmentHistory = (req, res) => __awaiter(void 0, void 0, void 0, fu
         }
         const list = yield Appointment_1.default.find({
             patientId,
-            status: { $in: ["done", "cancelled"] },
+            status: {
+                $in: [appointment_1.AppointmentStatus.COMPLETED, appointment_1.AppointmentStatus.CANCELLED],
+            },
         })
             .populate("doctorId", "name specialty workplace")
             .populate("scheduleId")
@@ -98,11 +229,32 @@ const cancelAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
             res.status(404).json({ message: "Không tìm thấy lịch hẹn" });
             return;
         }
-        if (appointment.status === "done") {
+        if (appointment.status === appointment_1.AppointmentStatus.COMPLETED) {
             res.status(400).json({ message: "Không thể hủy lịch hẹn đã hoàn thành" });
             return;
         }
-        appointment.status = "cancelled";
+        // Enforce 24-hour rule: cannot cancel within 24 hours of appointment start
+        try {
+            const apptDate = appointment.appointmentDate; // YYYY-MM-DD
+            const apptTime = appointment.appointmentTime || "00:00"; // HH:mm
+            const apptDateTime = new Date(`${apptDate}T${apptTime}:00`);
+            const ms24 = 24 * 60 * 60 * 1000;
+            const now = new Date();
+            if (apptDateTime.getTime() - now.getTime() <= ms24) {
+                // If caller provided force=true (admin or explicit override), allow; otherwise reject
+                const { force } = req.body;
+                if (!force) {
+                    res
+                        .status(400)
+                        .json({ message: "Không thể hủy trong vòng 24 giờ trước giờ hẹn" });
+                    return;
+                }
+            }
+        }
+        catch (e) {
+            // if parsing fails, fall back to previous behavior
+        }
+        appointment.status = appointment_1.AppointmentStatus.CANCELLED;
         yield appointment.save();
         // Cập nhật trạng thái lịch làm việc
         if (appointment.scheduleId) {
@@ -127,7 +279,7 @@ const updateSymptoms = (req, res) => __awaiter(void 0, void 0, void 0, function*
             res.status(404).json({ message: "Không tìm thấy lịch hẹn" });
             return;
         }
-        if (appointment.status !== "pending") {
+        if (appointment.status !== appointment_1.AppointmentStatus.BOOKED) {
             res
                 .status(400)
                 .json({ message: "Chỉ có thể cập nhật lịch hẹn đang chờ" });
@@ -142,3 +294,216 @@ const updateSymptoms = (req, res) => __awaiter(void 0, void 0, void 0, function*
     }
 });
 exports.updateSymptoms = updateSymptoms;
+// Doctor: request extension for a current appointment
+const extendAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const { minutes, doctorId, reason } = req.body;
+        if (!minutes || !doctorId) {
+            return res.status(400).json({ message: "Missing input" });
+        }
+        const appointment = yield Appointment_1.default.findById(id);
+        if (!appointment)
+            return res.status(404).json({ message: "Not found" });
+        // Only allow extension while in consultation or confirmed
+        if (![appointment_1.AppointmentStatus.CONFIRMED, appointment_1.AppointmentStatus.IN_CONSULT].includes(appointment.status)) {
+            return res
+                .status(400)
+                .json({ message: "Cannot request extension for this appointment" });
+        }
+        // Find the next appointment for same doctor on same date/time ordering
+        const next = yield Appointment_1.default.findOne({
+            doctorId: appointment.doctorId,
+            appointmentDate: appointment.appointmentDate,
+            _id: { $ne: appointment._id },
+            status: { $nin: [appointment_1.AppointmentStatus.CANCELLED] },
+        })
+            .where("createdAt")
+            .gt(appointment.createdAt)
+            .sort({ createdAt: 1 })
+            .exec();
+        const now = new Date();
+        // Build extension object
+        const ext = {
+            minutes,
+            status: "consent_pending",
+            requestedBy: new mongoose_1.default.Types.ObjectId(doctorId),
+            requestedAt: now,
+            reason: reason || "",
+            consentRequestedAt: now,
+            consentExpiresAt: new Date(now.getTime() + 3 * 60 * 1000), // 3 min
+        };
+        if (next)
+            ext.targetNextApptId = next._id;
+        appointment.extension = ext;
+        yield appointment.save();
+        // Notify next patient if exists
+        if (next) {
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(next.patientId),
+                    type: "appointment",
+                    title: "Yêu cầu gia hạn từ bác sĩ",
+                    body: `Bác sĩ muốn kéo dài buổi khám thêm ${minutes} phút. Bạn có đồng ý chờ?`,
+                    meta: { appointmentId: next._id, fromAppointmentId: appointment._id },
+                });
+            }
+            catch (e) {
+                console.error("Notify next patient failed", e);
+            }
+        }
+        res.json({
+            message: "Extension requested",
+            extension: appointment.extension,
+        });
+    }
+    catch (err) {
+        console.error(err);
+        res
+            .status(500)
+            .json({ message: "Error requesting extension", error: String(err) });
+    }
+});
+exports.extendAppointment = extendAppointment;
+// Patient: respond to extension consent request
+const extensionConsent = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { nextId } = req.params;
+        const { response, patientId } = req.body;
+        const next = yield Appointment_1.default.findById(nextId);
+        if (!next)
+            return res.status(404).json({ message: "Next appointment not found" });
+        // find the appointment that requested consent and points to this nextId
+        const requester = yield Appointment_1.default.findOne({
+            "extension.targetNextApptId": next._id,
+            "extension.status": "consent_pending",
+        });
+        if (!requester)
+            return res
+                .status(404)
+                .json({ message: "No pending extension request found" });
+        const now = new Date();
+        if (requester.extension &&
+            requester.extension.consentExpiresAt &&
+            requester.extension.consentExpiresAt < now) {
+            requester.extension.status = "timeout";
+            yield requester.save();
+            return res.status(410).json({ message: "Consent expired" });
+        }
+        if (String(next.patientId) !== String(patientId)) {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+        if (response === "accept") {
+            requester.extension.status = "accepted";
+            requester.extension.consentBy = new mongoose_1.default.Types.ObjectId(patientId);
+            requester.extension.consentResponse = "accepted";
+            requester.extension.appliedAt = now;
+            yield requester.save();
+            // Shift next appointment by minutes
+            const minutes = Number(requester.extension.minutes || 0);
+            if (minutes > 0) {
+                // naive shift: update appointment time fields if possible
+                // For MVP, keep appointmentDate same and just append an offset in patient-visible ETA
+                // TODO: implement robust time shifting and conflict checks
+                next.note =
+                    (next.note || "") +
+                        `\n[Shifted by ${minutes} minutes due to previous appointment]`;
+                yield next.save();
+            }
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(requester.doctorId),
+                    type: "appointment",
+                    title: "Bệnh nhân đồng ý gia hạn",
+                    body: `Bệnh nhân đã đồng ý chờ thêm ${requester.extension.minutes} phút`,
+                });
+            }
+            catch (e) {
+                console.error("Notify doctor failed", e);
+            }
+            return res.json({
+                message: "Accepted",
+                extension: requester.extension,
+            });
+        }
+        else {
+            requester.extension.status = "declined";
+            requester.extension.consentResponse = "declined";
+            yield requester.save();
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(requester.doctorId),
+                    type: "appointment",
+                    title: "Bệnh nhân từ chối gia hạn",
+                    body: `Bệnh nhân không đồng ý chờ. Vui lòng chọn phương án khác.`,
+                });
+            }
+            catch (e) {
+                console.error("Notify doctor failed", e);
+            }
+            return res.json({
+                message: "Declined",
+                extension: requester.extension,
+            });
+        }
+    }
+    catch (err) {
+        console.error(err);
+        res
+            .status(500)
+            .json({ message: "Error handling consent", error: String(err) });
+    }
+});
+exports.extensionConsent = extensionConsent;
+// Patient/Doctor check-in endpoint
+const checkinAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const { by } = req.body;
+        if (!id || !by) {
+            return res.status(400).json({ message: "Missing appointment id or 'by'" });
+        }
+        const appointment = yield Appointment_1.default.findById(id);
+        if (!appointment)
+            return res.status(404).json({ message: "Not found" });
+        const now = new Date();
+        appointment.meta = appointment.meta || {};
+        if (by === "patient") {
+            appointment.meta.patientCheckedInAt = now;
+            // optional: when patient checks in, notify doctor
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(appointment.doctorId),
+                    type: "appointment",
+                    title: "Bệnh nhân đã đến",
+                    body: `Bệnh nhân đã check-in cho lịch ${appointment._id}`,
+                });
+            }
+            catch (e) {
+                console.error("Notify doctor on patient check-in failed", e);
+            }
+        }
+        else {
+            appointment.meta.doctorCheckedInAt = now;
+            // optional: when doctor checks in, notify patient
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(appointment.patientId),
+                    type: "appointment",
+                    title: "Bác sĩ sẵn sàng khám",
+                    body: `Bác sĩ đã sẵn sàng cho lịch ${appointment._id}`,
+                });
+            }
+            catch (e) {
+                console.error("Notify patient on doctor check-in failed", e);
+            }
+        }
+        yield appointment.save();
+        res.json({ message: "Checked in", appointment });
+    }
+    catch (err) {
+        console.error(err);
+        res.status(500).json({ message: "Error on checkin", error: String(err) });
+    }
+});
+exports.checkinAppointment = checkinAppointment;

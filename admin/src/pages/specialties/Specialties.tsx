@@ -91,7 +91,9 @@ const Specialties: React.FC = () => {
       if (error.response?.status === 401) {
         toast.error("Phiên đăng nhập đã hết hạn");
       } else {
-        toast.error(error.response?.data?.message || "Không thể tạo chuyên khoa");
+        toast.error(
+          error.response?.data?.message || "Không thể tạo chuyên khoa"
+        );
       }
     }
   };
@@ -101,7 +103,11 @@ const Specialties: React.FC = () => {
     if (!editingSpecialty || !token) return;
 
     try {
-      const response = await adminUpdateSpecialty(token, editingSpecialty._id, formData);
+      const response = await adminUpdateSpecialty(
+        token,
+        editingSpecialty._id,
+        formData
+      );
       toast.success("Cập nhật chuyên khoa thành công");
       setIsEditDialogOpen(false);
       setEditingSpecialty(null);
@@ -112,7 +118,9 @@ const Specialties: React.FC = () => {
       if (error.response?.status === 401) {
         toast.error("Phiên đăng nhập đã hết hạn");
       } else {
-        toast.error(error.response?.data?.message || "Không thể cập nhật chuyên khoa");
+        toast.error(
+          error.response?.data?.message || "Không thể cập nhật chuyên khoa"
+        );
       }
     }
   };
@@ -148,7 +156,9 @@ const Specialties: React.FC = () => {
     }
 
     try {
-      await adminUpdateSpecialty(token, specialty._id, { isActive: !specialty.isActive });
+      await adminUpdateSpecialty(token, specialty._id, {
+        isActive: !specialty.isActive,
+      });
       toast.success(
         `${
           specialty.isActive ? "Vô hiệu hóa" : "Kích hoạt"
@@ -201,7 +211,7 @@ const Specialties: React.FC = () => {
     if (!isOpen) return null;
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
         <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
           <div className="p-6">
             <div className="flex justify-between items-center mb-4">

@@ -24,8 +24,7 @@ const LoginDoctor = () => {
     setIsLoading(true);
 
     try {
-      await login(email, password);
-      navigate("/doctor", { replace: true });
+      await login(email, password, navigate);
     } catch (err: unknown) {
       const error = err as { response?: { data?: { message?: string } } };
       setError(error?.response?.data?.message || "Đăng nhập thất bại");

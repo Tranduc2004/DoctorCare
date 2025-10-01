@@ -4,6 +4,8 @@ import appointmentRoutes from "./appointmentRoutes";
 import medicalRecordRoutes from "./medicalRecordRoutes";
 import authRoutes from "./authRoutes";
 import profileRoutes from "./profileRoutes";
+import uploadRoutes from "./uploadRoutes";
+import paymentRoutes from "./paymentRoutes";
 
 const router = Router();
 
@@ -12,5 +14,7 @@ router.use("/auth", authRoutes);
 router.use("/appointments", appointmentRoutes);
 router.use("/medical-records", medicalRecordRoutes);
 router.use("/profile", profileRoutes);
+router.use("/upload", uploadRoutes);
+router.use("/payments", paymentRoutes);
 
 export default router;

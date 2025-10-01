@@ -22,6 +22,22 @@ const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const { user } = useAuth();
+  const [showAvatar, setShowAvatar] = useState(true);
+
+  const getAvatarSrc = (avatar?: string) => {
+    if (!avatar) return "";
+    // If already an absolute URL, return encoded
+    if (/^https?:\/\//i.test(avatar)) return encodeURI(avatar);
+    // Otherwise prefix with backend origin and ensure proper encoding
+    try {
+      const base = "http://localhost:5000";
+      // Trim leading slashes to avoid double slashes
+      const path = avatar.startsWith("/") ? avatar : `/${avatar}`;
+      return base + encodeURI(path);
+    } catch {
+      return avatar;
+    }
+  };
 
   // Fetch specialties to get specialty names
   useEffect(() => {
@@ -80,11 +96,12 @@ const DoctorLayout: React.FC<DoctorLayoutProps> = ({ children }) => {
               </button>
               <DoctorChatIcon />
               <div className="flex items-center space-x-3">
-                {user?.avatar ? (
+                {user?.avatar && showAvatar ? (
                   <img
-                    src={user.avatar}
+                    src={getAvatarSrc(user.avatar)}
                     alt={user?.name}
                     className="h-8 w-8 rounded-full object-cover"
+                    onError={() => setShowAvatar(false)}
                   />
                 ) : (
                   <div className="h-8 w-8 bg-gradient-to-r from-blue-500 to-teal-500 rounded-full flex items-center justify-center">

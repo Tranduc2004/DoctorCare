@@ -31,7 +31,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     { icon: Calendar, label: "Chuyên khoa", path: "/specialties" },
     { icon: UserCheck, label: "Dịch vụ", path: "/services" },
     { icon: Calendar, label: "Lịch hẹn", path: "/appointments" },
-    { icon: Calendar, label: "Lịch làm việc", path: "/doctor-schedule" },
+    { icon: Activity, label: "BHYT", path: "/insurance" },
     { icon: BarChart3, label: "Thống kê", path: "/statistics" },
     { icon: Settings, label: "Cài đặt", path: "/settings" },
   ];

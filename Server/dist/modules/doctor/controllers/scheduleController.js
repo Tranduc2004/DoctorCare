@@ -14,6 +14,17 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getScheduleStats = exports.deleteSchedule = exports.updateSchedule = exports.reportBusy = exports.rejectSchedule = exports.acceptSchedule = exports.getMySchedules = exports.getDoctorSchedulesById = exports.getDoctorSchedules = exports.createSchedule = void 0;
 const DoctorSchedule_1 = __importDefault(require("../models/DoctorSchedule"));
+function toMinutes(t) {
+    const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+    return h * 60 + m;
+}
+function toTime(mins) {
+    const h = Math.floor(mins / 60)
+        .toString()
+        .padStart(2, "0");
+    const m = (mins % 60).toString().padStart(2, "0");
+    return `${h}:${m}`;
+}
 // Doctor: Tạo lịch làm việc mới
 const createSchedule = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -22,13 +33,39 @@ const createSchedule = (req, res) => __awaiter(void 0, void 0, void 0, function*
             res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
             return;
         }
-        const schedule = yield DoctorSchedule_1.default.create({
-            doctorId,
-            date,
-            startTime,
-            endTime,
-        });
-        res.status(201).json(schedule);
+        // If shift longer than 60 minutes, split into 60-minute slots
+        const startM = toMinutes(startTime);
+        const endM = toMinutes(endTime);
+        const SLOTP = 60;
+        const slots = [];
+        for (let s = startM; s < endM; s += SLOTP) {
+            const e = Math.min(s + SLOTP, endM);
+            if (e - s <= 0)
+                continue;
+            slots.push({ start: toTime(s), end: toTime(e) });
+        }
+        // Avoid duplicates: skip if an identical doc exists
+        const created = [];
+        for (const sl of slots) {
+            const exists = yield DoctorSchedule_1.default.findOne({
+                doctorId,
+                date,
+                startTime: sl.start,
+                endTime: sl.end,
+            }).lean();
+            if (exists)
+                continue;
+            const doc = yield DoctorSchedule_1.default.create({
+                doctorId,
+                date,
+                startTime: sl.start,
+                endTime: sl.end,
+            });
+            created.push(doc);
+        }
+        res
+            .status(201)
+            .json(created.length ? created : { message: "No new slots" });
     }
     catch (error) {
         res.status(500).json({ message: "Lỗi tạo lịch", error });
@@ -42,6 +79,55 @@ const getDoctorSchedules = (req, res) => __awaiter(void 0, void 0, void 0, funct
         if (!doctorId) {
             res.status(400).json({ message: "Thiếu doctorId" });
             return;
+        }
+        // Normalize legacy long shifts into 60-minute slots (best-effort)
+        const legacy = yield DoctorSchedule_1.default.find({
+            doctorId,
+            status: "accepted",
+            isBooked: false,
+        })
+            .sort({ date: 1, startTime: 1 })
+            .lean();
+        const toMinutes = (t) => {
+            const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+            return h * 60 + m;
+        };
+        const toTime = (mins) => {
+            const h = Math.floor(mins / 60)
+                .toString()
+                .padStart(2, "0");
+            const m = (mins % 60).toString().padStart(2, "0");
+            return `${h}:${m}`;
+        };
+        for (const it of legacy) {
+            const dur = toMinutes(it.endTime) - toMinutes(it.startTime);
+            if (dur > 60) {
+                const startM = toMinutes(it.startTime);
+                const endM = toMinutes(it.endTime);
+                for (let s = startM; s < endM; s += 60) {
+                    const e = Math.min(s + 60, endM);
+                    if (e - s <= 0)
+                        continue;
+                    const st = toTime(s);
+                    const et = toTime(e);
+                    const exists = yield DoctorSchedule_1.default.findOne({
+                        doctorId,
+                        date: it.date,
+                        startTime: st,
+                        endTime: et,
+                    }).lean();
+                    if (!exists) {
+                        yield DoctorSchedule_1.default.create({
+                            doctorId,
+                            date: it.date,
+                            startTime: st,
+                            endTime: et,
+                            status: "accepted",
+                        });
+                    }
+                }
+                yield DoctorSchedule_1.default.findByIdAndDelete(it._id);
+            }
         }
         const schedules = yield DoctorSchedule_1.default.find({
             doctorId,
@@ -61,6 +147,55 @@ exports.getDoctorSchedules = getDoctorSchedules;
 const getDoctorSchedulesById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { doctorId } = req.params;
+        // Normalize legacy long shifts into 60-minute slots (best-effort)
+        const legacy = yield DoctorSchedule_1.default.find({
+            doctorId,
+            status: "accepted",
+            isBooked: false,
+        })
+            .sort({ date: 1, startTime: 1 })
+            .lean();
+        const toMinutes = (t) => {
+            const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+            return h * 60 + m;
+        };
+        const toTime = (mins) => {
+            const h = Math.floor(mins / 60)
+                .toString()
+                .padStart(2, "0");
+            const m = (mins % 60).toString().padStart(2, "0");
+            return `${h}:${m}`;
+        };
+        for (const it of legacy) {
+            const dur = toMinutes(it.endTime) - toMinutes(it.startTime);
+            if (dur > 60) {
+                const startM = toMinutes(it.startTime);
+                const endM = toMinutes(it.endTime);
+                for (let s = startM; s < endM; s += 60) {
+                    const e = Math.min(s + 60, endM);
+                    if (e - s <= 0)
+                        continue;
+                    const st = toTime(s);
+                    const et = toTime(e);
+                    const exists = yield DoctorSchedule_1.default.findOne({
+                        doctorId,
+                        date: it.date,
+                        startTime: st,
+                        endTime: et,
+                    }).lean();
+                    if (!exists) {
+                        yield DoctorSchedule_1.default.create({
+                            doctorId,
+                            date: it.date,
+                            startTime: st,
+                            endTime: et,
+                            status: "accepted",
+                        });
+                    }
+                }
+                yield DoctorSchedule_1.default.findByIdAndDelete(it._id);
+            }
+        }
         const schedules = yield DoctorSchedule_1.default.find({
             doctorId,
             status: "accepted",

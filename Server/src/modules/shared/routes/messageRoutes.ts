@@ -1,5 +1,6 @@
 import { Router } from "express";
 import Message from "../../../shared/models/message";
+import { createNotification } from "../../../shared/services/notificationService";
 import Appointment from "../../patient/models/Appointment";
 import Patient from "../../patient/models/Patient";
 
@@ -47,6 +48,23 @@ router.post("/send", async (req, res) => {
       isReadByDoctor: senderRole === "doctor",
       isReadByPatient: senderRole === "patient",
     });
+
+    // Create a user notification for the recipient (best-effort, non-blocking)
+    try {
+      const recipientId = senderRole === "doctor" ? patientId : doctorId;
+      const title =
+        senderRole === "doctor"
+          ? "Bác sĩ đã gửi tin nhắn"
+          : "Bạn nhận được tin nhắn từ bệnh nhân";
+      await createNotification({
+        userId: String(recipientId),
+        type: "chat",
+        title,
+        body: content?.slice(0, 200) || "Bạn có tin nhắn mới",
+      } as unknown as any);
+    } catch (err) {
+      console.error("Create notification for message failed:", err);
+    }
 
     return res.status(201).json(doc);
   } catch (e) {

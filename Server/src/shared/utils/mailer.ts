@@ -6,7 +6,9 @@ const EMAIL_FROM = process.env.MAIL_FROM || EMAIL_USER;
 
 function createTransport() {
   return nodemailer.createTransport({
-    service: "gmail",
+    host: "smtp.gmail.com",
+    port: 587,
+    secure: false, // true for 465, false for other ports
     auth: { user: EMAIL_USER, pass: EMAIL_PASS },
     tls: { rejectUnauthorized: false },
   });

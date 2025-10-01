@@ -16,29 +16,19 @@ const LoginForm: React.FC = () => {
   const navigate = useNavigate();
   const { login, user } = useAuth();
 
-  // Sử dụng useEffect để theo dõi thay đổi của user state
+  // Kiểm tra role khi component mount
   useEffect(() => {
-    if (user && user.role) {
-      console.log("User state changed:", user);
-      console.log("Current pathname:", window.location.pathname);
-
-      // Kiểm tra role và chuyển hướng
-      if (user.role.toLowerCase() === "patient") {
-        console.log("Patient login successful, navigating to home");
-        navigate("/");
-      } else {
-        // Đăng xuất nếu không phải patient
-        console.error("Role không hợp lệ:", user.role);
-        console.error("Expected: patient, Got:", user.role);
-        toast.error(
-          "Tài khoản không phải bệnh nhân! Vui lòng đăng nhập đúng trang."
-        );
-        setError(
-          "Tài khoản không phải bệnh nhân! Vui lòng đăng nhập đúng trang."
-        );
-      }
+    if (user && user.role && user.role.toLowerCase() !== "patient") {
+      console.error("Role không hợp lệ:", user.role);
+      console.error("Expected: patient, Got:", user.role);
+      toast.error(
+        "Tài khoản không phải bệnh nhân! Vui lòng đăng nhập đúng trang."
+      );
+      setError(
+        "Tài khoản không phải bệnh nhân! Vui lòng đăng nhập đúng trang."
+      );
     }
-  }, [user, navigate]);
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,8 +36,7 @@ const LoginForm: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await login(email, password);
-      // Không cần setTimeout nữa, useEffect sẽ xử lý việc chuyển hướng
+      await login(email, password, navigate);
     } catch {
       setError("Đăng nhập thất bại");
     } finally {

@@ -4,7 +4,6 @@ import {
   CheckCircle,
   XCircle,
   AlertTriangle,
-  CalendarDays,
   UserCheck,
   MessageSquare,
   Filter,
@@ -219,27 +218,21 @@ const DoctorSchedulePage: React.FC = () => {
   const availableStatuses = [...new Set(shifts.map((shift) => shift.status))];
 
   return (
-    <div className="min-h-screen bg-slate-50 p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-500 rounded-xl">
-                <CalendarDays className="h-6 w-6 text-white" />
-              </div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-slate-900 mb-1">
-                  Ca làm việc của tôi
-                </h1>
-                <p className="text-slate-600">
-                  Tổng cộng {shifts.length} ca làm việc
-                </p>
-              </div>
-            </div>
+    <div className="min-h-screen bg-slate-50">
+      {/* Header */}
+      <header className="border-b border-slate-200 bg-gradient-to-r from-blue-500 to-teal-400">
+        <div className="mx-auto max-w-7xl px-6 py-5 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white">
+              Ca làm việc của tôi
+            </h1>
+            <p className="text-white/90">
+              Tổng cộng {shifts.length} ca làm việc
+            </p>
           </div>
         </div>
-
+      </header>
+      <div className="max-w-7xl mx-auto">
         {/* Filters */}
         <div className="mb-6">
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">

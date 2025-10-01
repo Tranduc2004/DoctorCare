@@ -16,6 +16,7 @@ import DoctorSchedule from "./pages/schedules/DoctorSchedule";
 import Specialties from "./pages/specialties/Specialties";
 import Services from "./pages/services/Services";
 import AdminAppointmentsPage from "./pages/appointments/Appointments";
+import InsuranceVerification from "./pages/insurance/InsuranceVerification";
 import "./App.css";
 
 // Protected Route Component
@@ -140,6 +141,16 @@ function App() {
                 <ProtectedRoute>
                   <AdminLayout>
                     <Services />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/insurance"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <InsuranceVerification />
                   </AdminLayout>
                 </ProtectedRoute>
               }
