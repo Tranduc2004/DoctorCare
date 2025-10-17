@@ -18,12 +18,21 @@ import {
   Send,
   Plus,
 } from "lucide-react";
-import ChatModal from "../../../components/Chat/ChatModal";
-import MedicalRecordForm from "../../../components/MedicalRecordForm";
+import ChatModal from "../../../components/Doctor/Chat/ChatModal";
+import MedicalRecordForm from "../../../components/Doctor/MedicalRecord/MedicalRecordForm";
 import { sendMessage } from "../../../api/chatApi";
 import { getDoctorSchedules } from "../../../api/appointmentApi";
-import { getMedicalRecordByAppointment } from "../../../api/medicalRecordApi";
+import {
+  getMedicalRecordByAppointment,
+  updateMedicalRecord,
+} from "../../../api/medicalRecordApi";
 import { Schedule } from "../../../types/api";
+import {
+  AppointmentWithMedicalRecord,
+  AppointmentMedicalRecord,
+} from "../../../types/appointmentMedicalRecord";
+import PrescriptionCheckPopup from "../../../components/Doctor/Prescription/PrescriptionCheckPopup";
+import PrescriptionEditDialog from "../../../components/Doctor/Prescription/PrescriptionEditDialog";
 
 /** =========================
  *  Types & Status helpers
@@ -316,6 +325,15 @@ const DoctorAppointmentsPage: React.FC = () => {
   const [reschedModalOpen, setReschedModalOpen] = useState(false);
   const [reschedAppointment, setReschedAppointment] =
     useState<Appointment | null>(null);
+
+  // Prescription Edit
+  const [prescriptionEditOpen, setPrescriptionEditOpen] = useState(false);
+  const [selectedPrescriptionId, setSelectedPrescriptionId] = useState<
+    string | null
+  >(null);
+  const [, setLoadingPrescription] = useState(false);
+  const [selectedPrescriptionRecord, setSelectedPrescriptionRecord] =
+    useState<AppointmentWithMedicalRecord | null>(null);
   const [availableSchedules, setAvailableSchedules] = useState<Schedule[]>([]);
   const [selectedScheduleId, setSelectedScheduleId] = useState<string | null>(
     null
@@ -352,6 +370,10 @@ const DoctorAppointmentsPage: React.FC = () => {
   }, [user?._id, loadAppointments]);
 
   /** Update status with guard */
+  const [showPrescriptionCheck, setShowPrescriptionCheck] = useState(false);
+  const [prescriptionAppointment, setPrescriptionAppointment] =
+    useState<AppointmentWithMedicalRecord | null>(null);
+
   const updateAppointmentStatus = async (
     appointmentId: string,
     newStatus: StatusKey
@@ -378,6 +400,41 @@ const DoctorAppointmentsPage: React.FC = () => {
           `Không thể chuyển từ ${STATUS_META[currentStatus].label} sang ${STATUS_META[safeNewStatus].label}`
         );
         return;
+      }
+
+      // Handle prescription state transition
+      if (safeNewStatus === "prescription_issued") {
+        try {
+          // Load medical record
+          const response = await fetch(
+            `http://localhost:5000/api/doctor/medical-records/by-appointment/${appointmentId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem("token")}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            setError("Cần tạo hồ sơ bệnh án trước khi kê đơn");
+            return;
+          }
+
+          const medicalRecord = await response.json();
+          if (!medicalRecord || !medicalRecord._id) {
+            setError("Cần tạo hồ sơ bệnh án trước khi kê đơn");
+            return;
+          }
+
+          // Show prescription check popup
+          setPrescriptionAppointment({ ...appointment, medicalRecord });
+          setShowPrescriptionCheck(true);
+          return;
+        } catch (error) {
+          console.error("Error loading medical record:", error);
+          setError("Không thể tải hồ sơ bệnh án");
+          return;
+        }
       }
 
       const response = await fetch(
@@ -445,7 +502,7 @@ const DoctorAppointmentsPage: React.FC = () => {
         const response = await getMedicalRecordByAppointment(appointmentId);
         // Kiểm tra xem response có record hay không
         return response && response._id ? true : false;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Log các lỗi để debug
         console.error("Error checking medical record:", error);
         return false;
@@ -811,8 +868,16 @@ const DoctorAppointmentsPage: React.FC = () => {
                               </button>
                               {/* Patient proposed reschedule quick peek */}
                               {(() => {
-                                const res = (appointment as any)?.meta
-                                  ?.reschedule;
+                                const res = (
+                                  appointment as {
+                                    meta?: {
+                                      reschedule?: {
+                                        proposedBy?: string;
+                                        proposedSlots?: string[];
+                                      };
+                                    };
+                                  }
+                                )?.meta?.reschedule;
                                 if (res?.proposedBy === "patient") {
                                   return (
                                     <button
@@ -1043,14 +1108,20 @@ const DoctorAppointmentsPage: React.FC = () => {
                 <div className="mb-2 text-xs font-medium text-slate-500">
                   Thông tin
                 </div>
-                <div className="text-slate-900">{selected.patientInfo?.name || selected.patientId.name}</div>
+                <div className="text-slate-900">
+                  {selected.patientInfo?.name || selected.patientId.name}
+                </div>
                 <div className="mt-2 flex items-center gap-2 text-sm text-slate-700">
                   <Phone className="h-4 w-4" />
-                  {selected.patientInfo?.phone || selected.patientId.phone || "—"}
+                  {selected.patientInfo?.phone ||
+                    selected.patientId.phone ||
+                    "—"}
                 </div>
                 <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
                   <Mail className="h-4 w-4" />
-                  {selected.patientInfo?.email || selected.patientId.email || "—"}
+                  {selected.patientInfo?.email ||
+                    selected.patientId.email ||
+                    "—"}
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 p-4">
@@ -1330,7 +1401,7 @@ const DoctorAppointmentsPage: React.FC = () => {
                   setMedicalRecordModalOpen(false);
                   setMedicalRecordAppointment(null);
                 }}
-                onSave={(record) => {
+                onSave={() => {
                   // Cập nhật lại danh sách appointments có medical record
                   setAppointmentsWithMedicalRecord(
                     (prev) => new Set([...prev, medicalRecordAppointment._id])
@@ -1341,8 +1412,199 @@ const DoctorAppointmentsPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Prescription Check Popup */}
+      {showPrescriptionCheck && prescriptionAppointment && (
+        <PrescriptionCheckPopup
+          open={showPrescriptionCheck}
+          onClose={() => {
+            setShowPrescriptionCheck(false);
+            setPrescriptionAppointment(null);
+          }}
+          onConfirm={async () => {
+            if (!prescriptionAppointment?._id) return;
+
+            try {
+              const response = await fetch(
+                `http://localhost:5000/api/doctor/appointments/${prescriptionAppointment._id}/status`,
+                {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${localStorage.getItem("token")}`,
+                  },
+                  body: JSON.stringify({
+                    id: prescriptionAppointment._id,
+                    status: "prescription_issued",
+                    doctorId: user?._id,
+                  }),
+                }
+              );
+
+              if (response.ok) {
+                await loadAppointments();
+                setError("");
+                alert("Đã cập nhật trạng thái kê đơn thành công!");
+              } else {
+                const errorData = await response.json();
+                setError(errorData?.message || "Không thể cập nhật trạng thái");
+              }
+            } catch (error) {
+              console.error("Error updating status:", error);
+              setError("Lỗi khi cập nhật trạng thái");
+            }
+
+            setShowPrescriptionCheck(false);
+            setPrescriptionAppointment(null);
+          }}
+          onModifyPrescription={async () => {
+            if (!prescriptionAppointment?._id) return;
+
+            try {
+              setLoadingPrescription(true);
+              try {
+                // Load medical record for prescription
+                const medicalRecord = await getMedicalRecordByAppointment(
+                  prescriptionAppointment._id
+                );
+                if (!medicalRecord) {
+                  throw new Error("Không tìm thấy hồ sơ bệnh án");
+                }
+
+                const formattedRecord: AppointmentMedicalRecord = {
+                  _id: medicalRecord._id || "",
+                  treatment:
+                    typeof medicalRecord.treatment === "string"
+                      ? medicalRecord.treatment
+                      : undefined,
+                  diagnosis: medicalRecord.preliminaryDiagnosis,
+                  status: medicalRecord.status,
+                  prescription: medicalRecord.prescription
+                    ? {
+                        medications:
+                          medicalRecord.prescription.medications?.map((m) => ({
+                            name: m.name,
+                            strength: m.strength,
+                            form: m.form,
+                            dosage: m.dosage,
+                            frequency: m.frequency,
+                            duration: m.duration,
+                            quantity: m.quantity,
+                            instructions: m.instructions,
+                          })) || [],
+                        notes: medicalRecord.prescription.notes,
+                      }
+                    : undefined,
+                  reasonForVisit: medicalRecord.reasonForVisit,
+                  chiefComplaint: medicalRecord.chiefComplaint,
+                  clinicalExamination:
+                    medicalRecord.clinicalExamination?.examinationNotes,
+                  finalDiagnosis: medicalRecord.finalDiagnosis,
+                  differentialDiagnosis: medicalRecord.differentialDiagnosis,
+                };
+
+                setSelectedPrescriptionRecord({
+                  ...prescriptionAppointment,
+                  medicalRecord: formattedRecord,
+                });
+
+                // Đóng popup xác nhận
+                setShowPrescriptionCheck(false);
+                setPrescriptionAppointment(null);
+
+                // Mở dialog chỉnh sửa đơn thuốc
+                setPrescriptionEditOpen(true);
+                setSelectedPrescriptionId(prescriptionAppointment._id);
+              } finally {
+                setLoadingPrescription(false);
+              }
+            } catch (error) {
+              console.error("Error loading prescription:", error);
+              setError("Không thể tải thông tin đơn thuốc");
+            }
+          }}
+          treatment={prescriptionAppointment.medicalRecord?.treatment}
+          prescription={prescriptionAppointment.medicalRecord?.prescription}
+        />
+      )}
+
+      {/* Prescription Edit Dialog */}
+      {prescriptionEditOpen && selectedPrescriptionId && (
+        <PrescriptionEditDialog
+          open={prescriptionEditOpen}
+          onClose={() => {
+            setPrescriptionEditOpen(false);
+            setSelectedPrescriptionId(null);
+            setSelectedPrescriptionRecord(null);
+          }}
+          onSave={async (medicines) => {
+            if (!selectedPrescriptionId) return;
+
+            try {
+              // Lấy medical record hiện tại
+              const medicalRecord = await getMedicalRecordByAppointment(
+                selectedPrescriptionId
+              );
+              if (!medicalRecord || !medicalRecord._id) {
+                throw new Error("Không tìm thấy hồ sơ bệnh án");
+              }
+
+              // Cập nhật prescription trong medical record
+              const response = await updateMedicalRecord(
+                medicalRecord._id,
+                {
+                  prescription: {
+                    medications: medicines.map((m) => ({
+                      name: m.drugName,
+                      strength: m.strength,
+                      form: m.form,
+                      dosage: m.dosage,
+                      frequency: m.frequency.toString(),
+                      duration: m.duration,
+                      quantity: m.quantity,
+                      instructions: m.instructions,
+                    })),
+                    notes: medicalRecord.prescription?.notes || "",
+                  },
+                },
+                user?._id || ""
+              );
+
+              if (!response) {
+                throw new Error("Không thể cập nhật đơn thuốc");
+              }
+
+              // Đóng dialog và reload
+              setPrescriptionEditOpen(false);
+              setSelectedPrescriptionId(null);
+              setSelectedPrescriptionRecord(null);
+              await loadAppointments();
+              alert("Đã cập nhật đơn thuốc thành công!");
+            } catch (error) {
+              console.error("Error updating prescription:", error);
+              setError("Không thể cập nhật đơn thuốc");
+            }
+          }}
+          appointmentId={selectedPrescriptionId}
+          suggestedMedicines={extractMedicinesFromTreatment(
+            selectedPrescriptionRecord?.medicalRecord?.treatment
+          )}
+          prescription={selectedPrescriptionRecord?.medicalRecord?.prescription}
+        />
+      )}
     </div>
   );
+};
+
+// Helper function to extract medicines from treatment text
+const extractMedicinesFromTreatment = (treatmentText?: string) => {
+  if (!treatmentText) return [];
+
+  // Regex để match các tên thuốc và liều lượng
+  // Giả sử format là: [Tên thuốc] [liều lượng] [đơn vị]
+  const medicineRegex = /([A-Za-z0-9\s]+)\s*(?:\d+\s*(?:mg|ml|viên|vỉ|hộp))/g;
+  const matches = treatmentText.match(medicineRegex) || [];
+  return matches;
 };
 
 export default DoctorAppointmentsPage;

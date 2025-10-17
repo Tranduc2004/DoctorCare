@@ -15,7 +15,7 @@ import {
   FaBrain,
   FaSearch,
 } from "react-icons/fa";
-import { driver, type Driver } from "driver.js";
+import { driver, type Driver, type DriveStep } from "driver.js";
 import "driver.js/dist/driver.css";
 
 /* =================== Types =================== */
@@ -100,7 +100,7 @@ function Field({
 
 const serviceMeta: Record<
   ServiceType,
-  { label: string; desc: string; icon: JSX.Element }
+  { label: string; desc: string; icon: React.ReactNode }
 > = {
   KHAM_TONG_QUAT: {
     label: "Khám tổng quát (30’ – 200k)",
@@ -458,12 +458,12 @@ export default function BookingFormRedesigned() {
   const startTour = () => {
     if (isTourRunningRef.current || window.__bookingTourRunning) return;
 
-    const steps: Parameters<typeof driver>[0]["steps"] = [];
+    const steps: DriveStep[] = [];
 
     // helper: chỉ thêm step khi element thực sự tồn tại trong DOM
     const addStepIfExists = (
       selector: string,
-      pop: NonNullable<Parameters<typeof driver>[0]["steps"]>[number]["popover"]
+      pop: DriveStep["popover"]
     ) => {
       const el = document.querySelector(selector);
       if (el) {
@@ -476,7 +476,7 @@ export default function BookingFormRedesigned() {
       title: "Thông tin bệnh nhân",
       description: "Điền thông tin cá nhân của bạn",
       side: "right",
-      className: "booking-tour-popover",
+      popoverClass: "booking-tour-popover",
     });
 
     // 2) Chọn dịch vụ
@@ -484,7 +484,7 @@ export default function BookingFormRedesigned() {
       title: "Chọn dịch vụ",
       description: "Chọn loại dịch vụ khám phù hợp",
       side: "bottom",
-      className: "booking-tour-popover",
+      popoverClass: "booking-tour-popover",
     });
 
     // 3) (Chỉ khi khám chuyên khoa) khu vực chuyên khoa/bác sĩ
@@ -494,7 +494,7 @@ export default function BookingFormRedesigned() {
         description:
           "Chọn chuyên khoa phù hợp (có thể để hệ thống tự gợi ý bác sĩ).",
         side: "left",
-        className: "booking-tour-popover",
+        popoverClass: "booking-tour-popover",
       });
 
       // 4) (Chỉ khi chuyên khoa) danh sách ca trống
@@ -502,7 +502,7 @@ export default function BookingFormRedesigned() {
         title: "Chọn lịch khám",
         description: "Chọn ca khám trống phù hợp với bạn.",
         side: "top",
-        className: "booking-tour-popover",
+        popoverClass: "booking-tour-popover",
       });
     }
 
@@ -511,7 +511,7 @@ export default function BookingFormRedesigned() {
       title: "Kiểm tra tóm tắt",
       description: "Xem lại thông tin trước khi gửi đăng ký.",
       side: "left",
-      className: "booking-tour-popover",
+      popoverClass: "booking-tour-popover",
     });
 
     // 6) Nút gửi
@@ -519,7 +519,7 @@ export default function BookingFormRedesigned() {
       title: "Gửi đăng ký",
       description: "Nhấn nút này để hoàn tất đặt lịch.",
       side: "top",
-      className: "booking-tour-popover",
+      popoverClass: "booking-tour-popover",
     });
 
     // Nếu vì lý do gì đó không có step nào -> thoát
@@ -528,14 +528,14 @@ export default function BookingFormRedesigned() {
     const inst = driver({
       showProgress: true,
       allowClose: true,
-      overlayClickNext: true, // click overlay để sang bước kế
+      // overlayClickNext: true, // Thuộc tính không hợp lệ đối với driver.js
+      overlayClickBehavior: "nextStep",
       animate: false,
       smoothScroll: false,
       stagePadding: 0,
       nextBtnText: "Tiếp tục",
       prevBtnText: "Quay lại",
       doneBtnText: "Hoàn tất",
-      closeBtnText: "Đóng",
       steps,
       onHighlightStarted: (el) => {
         const rect = (el as HTMLElement).getBoundingClientRect();
@@ -548,10 +548,13 @@ export default function BookingFormRedesigned() {
         window.__bookingTourRunning = false;
         setTimeout(hardCleanupDriverDom, 0);
       },
-      onComplete: () => {
+      // driver.js Config does not include onComplete; use onDestroyed to emulate cleanup
+      onDestroyed: () => {
         try {
           localStorage.setItem("hasSeenBookingTour", "true");
-        } catch {}
+        } catch {
+          /* empty */
+        }
         setHasSeenTour(true);
         isTourRunningRef.current = false;
         window.__bookingTourRunning = false;
@@ -608,7 +611,7 @@ export default function BookingFormRedesigned() {
       if (btn) btn.remove();
       hardCleanupDriverDom();
     };
-  }, []);
+  }, [startTour]);
 
   /* =================== UI =================== */
   return (

@@ -112,6 +112,27 @@ const InvoiceSchema = new mongoose_1.Schema({
     },
     dueDate: Date,
     paidAt: Date,
+    // VNPay fields
+    vnpayTxnRef: {
+        type: String,
+        index: true,
+    },
+    vnpayTransactionNo: {
+        type: String,
+    },
+    // PayOS order id (if an order was created with PayOS)
+    payosOrderId: {
+        type: String,
+        index: true,
+    },
+    paymentLinkId: {
+        type: String,
+        index: true,
+    },
+    // Raw provider data (useful for debugging and rehydration)
+    raw: {
+        type: mongoose_1.Schema.Types.Mixed,
+    },
 }, { timestamps: true });
 // Generate invoice number before validation so required check passes
 InvoiceSchema.pre("validate", function (next) {

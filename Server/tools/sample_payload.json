@@ -1,0 +1,24 @@
+{
+  "code": "00",
+  "desc": "success",
+  "success": true,
+  "data": {
+    "accountNumber": "0373741487",
+    "amount": 22000,
+    "description": "104001640535-CS8J590PNQ3Thanhtoandon17604816986304-CHUYEN TIEN-OQCH0002ssBm-MOMO104001640535MOMO",
+    "reference": "FT25288830104633",
+    "transactionDateTime": "2025-10-15 05:41:00",
+    "virtualAccountNumber": "",
+    "counterAccountBankId": "970422",
+    "counterAccountBankName": "",
+    "counterAccountName": "",
+    "counterAccountNumber": "2281072020614",
+    "virtualAccountName": "",
+    "currency": "VND",
+    "orderCode": 1760481698103,
+    "paymentLinkId": "fd349a128e4e4fa0aa3fb333f8b0121d",
+    "code": "00",
+    "desc": "success"
+  },
+  "signature": "da7767332519d21f86a8923738292ef31a4d4528b17b90a13ec582e8b7482540"
+}

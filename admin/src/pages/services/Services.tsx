@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Edit, Trash2, Clock } from "lucide-react";
+import { Plus, Search, Edit, Trash2, Clock, X } from "lucide-react";
 import { useAdminAuth } from "../../hooks/useAdminAuth";
 import {
   adminGetAllServices,
@@ -17,6 +17,9 @@ interface Service {
   description: string;
   price: number;
   duration: number; // minutes
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imagePublicId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -176,6 +179,9 @@ const Services: React.FC = () => {
     duration: 30,
   });
 
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string>("");
+
   const { toasts, push, remove } = useToast();
   const toast = {
     success: (m: string) => push("success", m),
@@ -228,8 +234,11 @@ const Services: React.FC = () => {
     );
   }, [services, searchTerm]);
 
-  const resetForm = () =>
+  const resetForm = () => {
     setFormData({ name: "", description: "", price: 0, duration: 30 });
+    setImageFile(null);
+    setImagePreview("");
+  };
 
   const validateForm = (d: CreateServiceData) => {
     if (!d.name.trim()) return "Vui lòng nhập tên dịch vụ";
@@ -245,7 +254,17 @@ const Services: React.FC = () => {
     if (msg) return toast.error(msg);
 
     try {
-      await adminCreateService(token, formData);
+      const formDataToSend = new FormData();
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("description", formData.description);
+      formDataToSend.append("price", formData.price.toString());
+      formDataToSend.append("duration", formData.duration.toString());
+
+      if (imageFile) {
+        formDataToSend.append("image", imageFile);
+      }
+
+      await adminCreateService(token, formDataToSend);
       toast.success("Tạo dịch vụ thành công");
       setIsCreateDialogOpen(false);
       resetForm();
@@ -262,7 +281,17 @@ const Services: React.FC = () => {
     if (msg) return toast.error(msg);
 
     try {
-      await adminUpdateService(token, editingService._id, formData);
+      const formDataToSend = new FormData();
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("description", formData.description);
+      formDataToSend.append("price", formData.price.toString());
+      formDataToSend.append("duration", formData.duration.toString());
+
+      if (imageFile) {
+        formDataToSend.append("image", imageFile);
+      }
+
+      await adminUpdateService(token, editingService._id, formDataToSend);
       toast.success("Cập nhật dịch vụ thành công");
       setIsEditDialogOpen(false);
       setEditingService(null);
@@ -309,7 +338,36 @@ const Services: React.FC = () => {
       price: s.price,
       duration: s.duration,
     });
+    setImageFile(null);
+    setImagePreview(s.imageUrl || "");
     setIsEditDialogOpen(true);
+  };
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        // 5MB limit
+        toast.error("Kích thước ảnh không được vượt quá 5MB");
+        return;
+      }
+      if (!file.type.startsWith("image/")) {
+        toast.error("Vui lòng chọn file ảnh");
+        return;
+      }
+
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setImagePreview(event.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreview("");
   };
 
   /* ---------- UI ---------- */
@@ -367,6 +425,7 @@ const Services: React.FC = () => {
             <thead className="bg-slate-50">
               <tr>
                 {[
+                  "Ảnh",
                   "Tên dịch vụ",
                   "Mô tả",
                   "Giá",
@@ -387,7 +446,7 @@ const Services: React.FC = () => {
               {filteredServices.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-10 text-center text-slate-500"
                   >
                     Không tìm thấy dịch vụ nào
@@ -396,6 +455,21 @@ const Services: React.FC = () => {
               ) : (
                 filteredServices.map((s) => (
                   <tr key={s._id} className="hover:bg-slate-50">
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {s.imageUrl || s.thumbnailUrl ? (
+                        <img
+                          src={s.thumbnailUrl || s.imageUrl}
+                          alt={s.name}
+                          className="h-12 w-12 rounded-lg object-cover border border-slate-200"
+                        />
+                      ) : (
+                        <div className="h-12 w-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
+                          <span className="text-slate-400 text-xs">
+                            Không có ảnh
+                          </span>
+                        </div>
+                      )}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
                       {s.name}
                     </td>
@@ -536,6 +610,67 @@ const Services: React.FC = () => {
               />
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Ảnh dịch vụ
+            </label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
+              <div className="space-y-1 text-center">
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="mx-auto h-32 w-32 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <svg
+                      className="mx-auto h-12 w-12 text-slate-400"
+                      stroke="currentColor"
+                      fill="none"
+                      viewBox="0 0 48 48"
+                    >
+                      <path
+                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="flex text-sm text-slate-600">
+                      <label
+                        htmlFor="service-image"
+                        className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
+                      >
+                        <span>Tải lên ảnh</span>
+                        <input
+                          id="service-image"
+                          name="service-image"
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                      <p className="pl-1">hoặc kéo thả</p>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      PNG, JPG, GIF tối đa 5MB
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="flex justify-end gap-2">
             <button
               onClick={() => setIsCreateDialogOpen(false)}
@@ -637,6 +772,67 @@ const Services: React.FC = () => {
                 placeholder="Nhập thời gian"
                 className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Ảnh dịch vụ
+            </label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
+              <div className="space-y-1 text-center">
+                {imagePreview ? (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="mx-auto h-32 w-32 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={removeImage}
+                      className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <svg
+                      className="mx-auto h-12 w-12 text-slate-400"
+                      stroke="currentColor"
+                      fill="none"
+                      viewBox="0 0 48 48"
+                    >
+                      <path
+                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="flex text-sm text-slate-600">
+                      <label
+                        htmlFor="edit-service-image"
+                        className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
+                      >
+                        <span>Tải lên ảnh</span>
+                        <input
+                          id="edit-service-image"
+                          name="edit-service-image"
+                          type="file"
+                          accept="image/*"
+                          className="sr-only"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                      <p className="pl-1">hoặc kéo thả</p>
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      PNG, JPG, GIF tối đa 5MB
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex justify-end gap-2">

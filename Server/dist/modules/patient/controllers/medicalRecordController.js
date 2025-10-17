@@ -22,7 +22,11 @@ const getPatientMedicalRecords = (req, res) => __awaiter(void 0, void 0, void 0,
             res.status(400).json({ message: "Thiếu patientId" });
             return;
         }
-        const records = yield MedicalRecord_1.default.find({ patient: patientId })
+        // Chỉ lấy các bệnh án đã hoàn thành
+        const records = yield MedicalRecord_1.default.find({
+            patient: patientId,
+            status: "completed", // Chỉ hiển thị bệnh án đã hoàn thành
+        })
             .populate("doctor", "name specialty workplace")
             .populate("patient", "name email phone")
             .sort({ createdAt: -1 })
@@ -43,11 +47,19 @@ const getMedicalRecordDetail = (req, res) => __awaiter(void 0, void 0, void 0, f
             res.status(400).json({ message: "Thiếu patientId" });
             return;
         }
-        const record = yield MedicalRecord_1.default.findOne({ _id: id, patient: patientId })
+        // Chỉ cho phép xem bệnh án đã hoàn thành - trả về tất cả thông tin
+        const record = yield MedicalRecord_1.default.findOne({
+            _id: id,
+            patient: patientId,
+            status: "completed", // Chỉ cho phép xem bệnh án đã hoàn thành
+        })
             .populate("doctor", "name specialty workplace")
-            .populate("patient", "name email phone");
+            .populate("patient", "name email phone")
+            .lean(); // Sử dụng lean() để trả về plain object với tất cả fields
         if (!record) {
-            res.status(404).json({ message: "Không tìm thấy hồ sơ bệnh án" });
+            res.status(404).json({
+                message: "Không tìm thấy hồ sơ bệnh án hoặc bệnh án chưa hoàn thành",
+            });
             return;
         }
         res.json(record);
@@ -65,10 +77,14 @@ const getPatientHistory = (req, res) => __awaiter(void 0, void 0, void 0, functi
             res.status(400).json({ message: "Thiếu patientId" });
             return;
         }
-        const records = yield MedicalRecord_1.default.find({ patient: patientId })
+        // Chỉ lấy lịch sử các bệnh án đã hoàn thành
+        const records = yield MedicalRecord_1.default.find({
+            patient: patientId,
+            status: "completed", // Chỉ hiển thị bệnh án đã hoàn thành
+        })
             .populate("doctor", "name specialty")
-            .select("diagnosis treatment createdAt")
-            .sort({ createdAt: -1 })
+            .select("diagnosis treatment createdAt completedAt")
+            .sort({ completedAt: -1 }) // Sắp xếp theo ngày hoàn thành
             .limit(10)
             .lean();
         res.json(records);

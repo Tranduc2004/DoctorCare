@@ -189,28 +189,50 @@ export const adminGetServiceById = async (token: string, id: string) => {
 
 export const adminCreateService = async (
   token: string,
-  data: {
-    name: string;
-    description: string;
-    price: number;
-    duration: number;
-  }
+  data:
+    | FormData
+    | {
+        name: string;
+        description: string;
+        price: number;
+        duration: number;
+      }
 ) => {
-  return axios.post(`${API_URL}/admin/services`, data, authHeader(token));
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Nếu không phải FormData, set Content-Type là JSON
+  if (!(data instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return axios.post(`${API_URL}/admin/services`, data, { headers });
 };
 
 export const adminUpdateService = async (
   token: string,
   id: string,
-  data: Partial<{
-    name: string;
-    description: string;
-    price: number;
-    duration: number;
-    isActive: boolean;
-  }>
+  data:
+    | FormData
+    | Partial<{
+        name: string;
+        description: string;
+        price: number;
+        duration: number;
+        isActive: boolean;
+      }>
 ) => {
-  return axios.put(`${API_URL}/admin/services/${id}`, data, authHeader(token));
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Nếu không phải FormData, set Content-Type là JSON
+  if (!(data instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return axios.put(`${API_URL}/admin/services/${id}`, data, { headers });
 };
 
 export const adminDeleteService = async (token: string, id: string) => {
@@ -239,28 +261,46 @@ export const adminGetSpecialtyById = async (token: string, id: string) => {
 
 export const adminCreateSpecialty = async (
   token: string,
-  data: {
-    name: string;
-    description: string;
-  }
+  data:
+    | FormData
+    | {
+        name: string;
+        description: string;
+      }
 ) => {
-  return axios.post(`${API_URL}/admin/specialties`, data, authHeader(token));
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Nếu không phải FormData, set Content-Type là JSON
+  if (!(data instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return axios.post(`${API_URL}/admin/specialties`, data, { headers });
 };
 
 export const adminUpdateSpecialty = async (
   token: string,
   id: string,
-  data: Partial<{
-    name: string;
-    description: string;
-    isActive: boolean;
-  }>
+  data:
+    | FormData
+    | Partial<{
+        name: string;
+        description: string;
+        isActive: boolean;
+      }>
 ) => {
-  return axios.put(
-    `${API_URL}/admin/specialties/${id}`,
-    data,
-    authHeader(token)
-  );
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+  };
+
+  // Nếu không phải FormData, set Content-Type là JSON
+  if (!(data instanceof FormData)) {
+    headers["Content-Type"] = "application/json";
+  }
+
+  return axios.put(`${API_URL}/admin/specialties/${id}`, data, { headers });
 };
 
 export const adminDeleteSpecialty = async (token: string, id: string) => {
@@ -355,4 +395,32 @@ export const adminVerifyInsurance = async (
 
 export const adminGetInsuranceById = async (token: string, id: string) => {
   return axios.get(`${API_URL}/admin/insurance/${id}`, authHeader(token));
+};
+
+// Admin: Bank accounts (for transfer payments)
+export const adminGetBankAccounts = async (token: string) => {
+  return axios.get(`${API_URL}/admin/bank-accounts`, authHeader(token));
+};
+
+export const adminCreateBankAccount = async (token: string, data: any) => {
+  return axios.post(`${API_URL}/admin/bank-accounts`, data, authHeader(token));
+};
+
+export const adminUpdateBankAccount = async (
+  token: string,
+  id: string,
+  data: any
+) => {
+  return axios.put(
+    `${API_URL}/admin/bank-accounts/${id}`,
+    data,
+    authHeader(token)
+  );
+};
+
+export const adminDeleteBankAccount = async (token: string, id: string) => {
+  return axios.delete(
+    `${API_URL}/admin/bank-accounts/${id}`,
+    authHeader(token)
+  );
 };

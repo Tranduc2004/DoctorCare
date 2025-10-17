@@ -7,6 +7,9 @@ import scheduleRoutes from "./scheduleRoutes";
 import serviceRoutes from "./serviceRoutes";
 import specialtyRoutes from "./specialtyRoutes";
 import insuranceRoutes from "./insuranceRoutes";
+import medicalRecordRoutes from "./medicalRecordRoutes";
+import bankAccountRoutes from "./bankAccountRoutes";
+import paymentAdminRoutes from "./paymentAdminRoutes";
 
 const router = Router();
 
@@ -18,5 +21,8 @@ router.use("/schedules", scheduleRoutes);
 router.use("/services", serviceRoutes);
 router.use("/specialties", specialtyRoutes);
 router.use("/insurance", insuranceRoutes);
+router.use("/medical-records", medicalRecordRoutes);
+router.use("/bank-accounts", bankAccountRoutes);
+router.use("/payments", paymentAdminRoutes);
 
 export default router;

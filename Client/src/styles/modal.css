@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+@layer components {
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  }
+
+  .modal-backdrop {
+    @apply absolute inset-0 bg-black/40;
+  }
+
+  .modal-container {
+    @apply relative z-10 w-full max-w-3xl rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-400 p-6 shadow-xl;
+  }
+
+  .modal-header {
+    @apply flex items-start justify-between mb-6;
+  }
+
+  .modal-title {
+    @apply text-2xl font-semibold text-white;
+  }
+
+  .modal-close {
+    @apply text-white/70 hover:text-white transition-colors;
+  }
+
+  .modal-card {
+    @apply bg-white/10 backdrop-blur-sm rounded-xl border border-white/20 p-4;
+  }
+
+  .modal-card-title {
+    @apply text-sm font-semibold text-white uppercase tracking-wider mb-3;
+  }
+
+  .modal-input-group {
+    @apply bg-white/10 rounded-lg p-3 border border-white/20;
+  }
+
+  .modal-label {
+    @apply text-sm text-white/70 mb-1;
+  }
+
+  .modal-value {
+    @apply font-medium text-white;
+  }
+
+  .modal-badge {
+    @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+  }
+
+  .modal-badge-pending {
+    @apply bg-yellow-400/20 text-yellow-100;
+  }
+
+  .modal-badge-success {
+    @apply bg-emerald-400/20 text-emerald-100;
+  }
+
+  .modal-badge-default {
+    @apply bg-white/20 text-white;
+  }
+
+  .modal-button {
+    @apply px-6 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-white border border-white/20 transition-colors backdrop-blur-sm;
+  }
+
+  .modal-button-primary {
+    @apply modal-button bg-white/20;
+  }
+
+  .modal-loading {
+    @apply text-center py-12;
+  }
+
+  .modal-spinner {
+    @apply animate-spin rounded-full h-10 w-10 border-b-2 border-white mx-auto mb-2;
+  }
+}

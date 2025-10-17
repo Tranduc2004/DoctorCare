@@ -1,10 +1,10 @@
-import HeroBanner from "../../../components/Home/HeroBanner";
-import ServiceSection from "../../../components/Home/ServiceSection";
-import DoctorSection from "../../../components/Home/DoctorSection";
-import AppointmentSection from "../../../components/Home/AppointmentSection";
-import TestimonialSection from "../../../components/Home/TestimonialSection";
-import FaqSection from "../../../components/Home/FaqSection";
-import FloatingChatWidget from "../../../components/Home/FloatingChatWidget";
+import HeroBanner from "../../../components/Patient/Home/HeroBanner";
+import ServiceSection from "../../../components/Patient/Home/ServiceSection";
+import DoctorSection from "../../../components/Patient/Home/DoctorSection";
+import AppointmentSection from "../../../components/Patient/Home/AppointmentSection";
+import TestimonialSection from "../../../components/Patient/Home/TestimonialSection";
+import FaqSection from "../../../components/Patient/Home/FaqSection";
+import FloatingChatWidget from "../../../components/Patient/Home/FloatingChatWidget";
 
 // Component chính cho trang chủ
 export default function HomePage() {

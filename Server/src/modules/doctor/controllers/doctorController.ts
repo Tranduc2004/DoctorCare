@@ -36,7 +36,10 @@ export const getDoctorById = async (
   try {
     const { id } = req.params as { id: string };
 
-    const doctor = await Doctor.findById(id).select("-password").lean();
+    const doctor = await Doctor.findById(id)
+      .select("-password")
+      .populate("specialty", "name")
+      .lean();
 
     if (!doctor) {
       res.status(404).json({ message: "Không tìm thấy bác sĩ" });

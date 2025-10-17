@@ -38,7 +38,10 @@ exports.getDoctorsBySpecialty = getDoctorsBySpecialty;
 const getDoctorById = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
-        const doctor = yield Doctor_1.default.findById(id).select("-password").lean();
+        const doctor = yield Doctor_1.default.findById(id)
+            .select("-password")
+            .populate("specialty", "name")
+            .lean();
         if (!doctor) {
             res.status(404).json({ message: "Không tìm thấy bác sĩ" });
             return;

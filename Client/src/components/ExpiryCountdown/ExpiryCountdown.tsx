@@ -45,7 +45,8 @@ export default function ExpiryCountdown({
 
   useEffect(() => {
     if (!isFinite(expiryMs)) return;
-    let id: any;
+
+    let id: ReturnType<typeof setTimeout>;
     const tick = () => {
       setNow(Date.now() + skew);
       id = setTimeout(tick, 1000 - ((Date.now() + skew) % 1000));
@@ -54,14 +55,14 @@ export default function ExpiryCountdown({
     return () => clearTimeout(id);
   }, [expiryMs, skew]);
 
-  if (!isFinite(expiryMs)) return null;
-
-  const remaining = Math.max(0, expiryMs - now);
+  // luôn tính remaining, kể cả khi expiryMs không hợp lệ
+  const remaining = isFinite(expiryMs) ? Math.max(0, expiryMs - now) : 0;
 
   useEffect(() => {
-    if (remaining === 0) onExpire?.();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [remaining === 0]);
+    if (remaining === 0) {
+      onExpire?.();
+    }
+  }, [remaining, onExpire]);
 
   const expired = remaining <= 0;
 

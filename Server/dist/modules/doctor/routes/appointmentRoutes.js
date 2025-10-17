@@ -7,5 +7,9 @@ const router = (0, express_1.Router)();
 router.get("/", controllers_1.getDoctorAppointments);
 router.get("/by-date", controllers_1.getAppointmentsByDate);
 router.get("/stats", controllers_1.getAppointmentStats);
-router.put("/:id/status", controllers_1.updateAppointmentStatus);
+router.put("/:appointmentId/status", controllers_1.updateAppointmentStatus);
+// Doctor requests a reschedule (provide newScheduleId)
+router.post("/:appointmentId/request-reschedule", controllers_1.requestReschedule);
+// Doctor accepts patient's reschedule selection (or confirms)
+router.post("/:appointmentId/accept-reschedule", controllers_1.acceptReschedule);
 exports.default = router;

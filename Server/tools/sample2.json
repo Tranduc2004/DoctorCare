@@ -1,0 +1,24 @@
+{
+  "code": "00",
+  "desc": "success",
+  "success": true,
+  "data": {
+    "accountNumber": "0373741487",
+    "amount": 22000,
+    "description": "CSE7Q5TP6U8 Thanh toan don 17604808070",
+    "reference": "FT25288021192389",
+    "transactionDateTime": "2025-10-15 05:28:00",
+    "virtualAccountNumber": "",
+    "counterAccountBankId": "970422",
+    "counterAccountBankName": "",
+    "counterAccountName": null,
+    "counterAccountNumber": "2281072020614",
+    "virtualAccountName": "",
+    "currency": "VND",
+    "orderCode": 1760480807071,
+    "paymentLinkId": "8d7998361650457a80fc2cb04da95b1c",
+    "code": "00",
+    "desc": "success"
+  },
+  "signature": "b0a2d058248b4ac5f1ac78420552be5ddfa4be5a3abb1294d96753a2cc608fe6"
+}

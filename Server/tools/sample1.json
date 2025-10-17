@@ -1,0 +1,24 @@
+{
+  "code": "00",
+  "desc": "success",
+  "success": true,
+  "data": {
+    "accountNumber": "0373741487",
+    "amount": 22000,
+    "description": "0373741487-Thanh toan don 17604801836304-CHUYEN TIEN",
+    "reference": "FT25288700835043",
+    "transactionDateTime": "2025-10-15 05:16:00",
+    "virtualAccountNumber": "",
+    "counterAccountBankId": "970422",
+    "counterAccountBankName": "",
+    "counterAccountName": "",
+    "counterAccountNumber": "2281072020614",
+    "virtualAccountName": "",
+    "currency": "VND",
+    "orderCode": 1760480183860,
+    "paymentLinkId": "878ee1b72bf14912ab6a787ae9067ad2",
+    "code": "00",
+    "desc": "success"
+  },
+  "signature": "29002fcfd4ea346234f36065acd07860a9d34759e6f466ad2c2f0befc8a41743"
+}

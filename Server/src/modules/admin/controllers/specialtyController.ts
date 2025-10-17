@@ -3,6 +3,11 @@ import specialtyService, {
   CreateSpecialtyData,
   UpdateSpecialtyData,
 } from "../services/specialtyService";
+import {
+  uploadSpecialtyImage,
+  deleteSpecialtyImage,
+  deleteImageByPublicId,
+} from "../../../shared/utils/cloudinary";
 
 // Lấy tất cả chuyên khoa
 export const getAllSpecialties: RequestHandler = async (
@@ -93,9 +98,35 @@ export const createSpecialty: RequestHandler = async (
 
     const newSpecialty = await specialtyService.createSpecialty(specialtyData);
 
+    // Upload ảnh nếu có
+    let imageData = null;
+    if (req.file) {
+      try {
+        imageData = await uploadSpecialtyImage(
+          req.file.path,
+          newSpecialty._id as string
+        );
+
+        // Cập nhật specialty với thông tin ảnh
+        await specialtyService.updateSpecialty(newSpecialty._id as string, {
+          imageUrl: imageData.url,
+          imagePublicId: imageData.public_id,
+          thumbnailUrl: imageData.thumbnail_url,
+        });
+      } catch (imageError) {
+        console.error("Error uploading specialty image:", imageError);
+        // Không return error, vì specialty đã được tạo thành công
+      }
+    }
+
+    // Lấy specialty với thông tin ảnh đã cập nhật
+    const updatedSpecialty = await specialtyService.getSpecialtyById(
+      newSpecialty._id as string
+    );
+
     res.status(201).json({
       success: true,
-      data: newSpecialty,
+      data: updatedSpecialty,
       message: "Tạo chuyên khoa thành công",
     });
   } catch (error: any) {
@@ -147,6 +178,35 @@ export const updateSpecialty: RequestHandler = async (
           message: "Tên chuyên khoa đã tồn tại",
         });
         return;
+      }
+    }
+
+    // Lấy specialty hiện tại để kiểm tra ảnh cũ
+    const currentSpecialty = await specialtyService.getSpecialtyById(id);
+    if (!currentSpecialty) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy chuyên khoa",
+      });
+      return;
+    }
+
+    // Xử lý upload ảnh mới
+    if (req.file) {
+      try {
+        // Xóa ảnh cũ nếu có
+        if (currentSpecialty.imagePublicId) {
+          await deleteImageByPublicId(currentSpecialty.imagePublicId);
+        }
+
+        // Upload ảnh mới
+        const imageData = await uploadSpecialtyImage(req.file.path, id);
+        updateData.imageUrl = imageData.url;
+        updateData.imagePublicId = imageData.public_id;
+        updateData.thumbnailUrl = imageData.thumbnail_url;
+      } catch (imageError) {
+        console.error("Error uploading specialty image:", imageError);
+        // Tiếp tục update các trường khác
       }
     }
 
@@ -225,6 +285,17 @@ export const hardDeleteSpecialty: RequestHandler = async (
 ) => {
   try {
     const { id } = req.params;
+
+    // Lấy thông tin specialty để xóa ảnh
+    const specialty = await specialtyService.getSpecialtyById(id);
+    if (specialty && specialty.imagePublicId) {
+      try {
+        await deleteImageByPublicId(specialty.imagePublicId);
+      } catch (imageError) {
+        console.error("Error deleting specialty image:", imageError);
+      }
+    }
+
     const isDeleted = await specialtyService.hardDeleteSpecialty(id);
 
     if (!isDeleted) {

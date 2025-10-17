@@ -1,4 +1,4 @@
-import Specialty, { ISpecialty } from '../models/Specialty';
+import Specialty, { ISpecialty } from "../models/Specialty";
 
 export interface CreateSpecialtyData {
   name: string;
@@ -8,6 +8,9 @@ export interface CreateSpecialtyData {
 export interface UpdateSpecialtyData {
   name?: string;
   description?: string;
+  imageUrl?: string;
+  imagePublicId?: string;
+  thumbnailUrl?: string;
   isActive?: boolean;
 }
 
@@ -29,7 +32,10 @@ export class SpecialtyService {
   }
 
   // Cập nhật chuyên khoa
-  async updateSpecialty(id: string, data: UpdateSpecialtyData): Promise<ISpecialty | null> {
+  async updateSpecialty(
+    id: string,
+    data: UpdateSpecialtyData
+  ): Promise<ISpecialty | null> {
     return await Specialty.findByIdAndUpdate(
       id,
       { ...data },
@@ -56,7 +62,7 @@ export class SpecialtyService {
   async searchSpecialties(query: string): Promise<ISpecialty[]> {
     return await Specialty.find({
       $text: { $search: query },
-      isActive: true
+      isActive: true,
     }).sort({ score: { $meta: "textScore" } });
   }
 
@@ -66,8 +72,11 @@ export class SpecialtyService {
   }
 
   // Kiểm tra chuyên khoa có tồn tại không
-  async checkSpecialtyExists(name: string, excludeId?: string): Promise<boolean> {
-    const query: any = { name: { $regex: new RegExp(`^${name}$`, 'i') } };
+  async checkSpecialtyExists(
+    name: string,
+    excludeId?: string
+  ): Promise<boolean> {
+    const query: any = { name: { $regex: new RegExp(`^${name}$`, "i") } };
     if (excludeId) {
       query._id = { $ne: excludeId };
     }

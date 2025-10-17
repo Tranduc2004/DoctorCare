@@ -12,6 +12,9 @@ interface Specialty {
   _id: string;
   name: string;
   description: string;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imagePublicId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +39,21 @@ const Specialties: React.FC = () => {
     name: "",
     description: "",
   });
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setImageFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   // Mock toast function (replace with your actual toast implementation)
   const toast = {
@@ -81,10 +99,18 @@ const Specialties: React.FC = () => {
     }
 
     try {
-      const response = await adminCreateSpecialty(token, formData);
+      const formDataToSend = new FormData();
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("description", formData.description);
+
+      if (imageFile) {
+        formDataToSend.append("image", imageFile);
+      }
+
+      await adminCreateSpecialty(token, formDataToSend);
       toast.success("Tạo chuyên khoa thành công");
       setIsCreateDialogOpen(false);
-      setFormData({ name: "", description: "" });
+      resetForm();
       fetchSpecialties();
     } catch (error: any) {
       console.error("Error creating specialty:", error);
@@ -98,20 +124,30 @@ const Specialties: React.FC = () => {
     }
   };
 
+  const resetForm = () => {
+    setFormData({ name: "", description: "" });
+    setImageFile(null);
+    setImagePreview(null);
+  };
+
   // Update specialty
   const updateSpecialty = async () => {
     if (!editingSpecialty || !token) return;
 
     try {
-      const response = await adminUpdateSpecialty(
-        token,
-        editingSpecialty._id,
-        formData
-      );
+      const formDataToSend = new FormData();
+      formDataToSend.append("name", formData.name);
+      formDataToSend.append("description", formData.description);
+
+      if (imageFile) {
+        formDataToSend.append("image", imageFile);
+      }
+
+      await adminUpdateSpecialty(token, editingSpecialty._id, formDataToSend);
       toast.success("Cập nhật chuyên khoa thành công");
       setIsEditDialogOpen(false);
       setEditingSpecialty(null);
-      setFormData({ name: "", description: "" });
+      resetForm();
       fetchSpecialties();
     } catch (error: any) {
       console.error("Error updating specialty:", error);
@@ -182,6 +218,8 @@ const Specialties: React.FC = () => {
       name: specialty.name,
       description: specialty.description,
     });
+    setImageFile(null);
+    setImagePreview(null);
     setIsEditDialogOpen(true);
   };
 
@@ -280,6 +318,9 @@ const Specialties: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Hình ảnh
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Tên chuyên khoa
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -300,7 +341,7 @@ const Specialties: React.FC = () => {
                 {filteredSpecialties.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={5}
+                      colSpan={6}
                       className="px-6 py-4 text-center text-gray-500"
                     >
                       Không tìm thấy chuyên khoa nào
@@ -309,6 +350,21 @@ const Specialties: React.FC = () => {
                 ) : (
                   filteredSpecialties.map((specialty) => (
                     <tr key={specialty._id} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {specialty.thumbnailUrl ? (
+                          <img
+                            src={specialty.thumbnailUrl}
+                            alt={specialty.name}
+                            className="w-12 h-12 rounded-lg object-cover"
+                          />
+                        ) : (
+                          <div className="w-12 h-12 bg-gray-200 rounded-lg flex items-center justify-center">
+                            <span className="text-gray-400 text-xs">
+                              No image
+                            </span>
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap font-medium text-gray-900">
                         {specialty.name}
                       </td>
@@ -365,7 +421,10 @@ const Specialties: React.FC = () => {
       {/* Create Modal */}
       <Modal
         isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
+        onClose={() => {
+          setIsCreateDialogOpen(false);
+          resetForm();
+        }}
         title="Thêm chuyên khoa mới"
       >
         <div className="space-y-4">
@@ -405,9 +464,74 @@ const Specialties: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
+
+          {/* Image Upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Hình ảnh chuyên khoa
+            </label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+              <div className="space-y-1 text-center">
+                {imagePreview ? (
+                  <div className="space-y-2">
+                    <img
+                      src={imagePreview}
+                      alt="Preview"
+                      className="mx-auto h-32 w-32 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageFile(null);
+                        setImagePreview(null);
+                      }}
+                      className="text-sm text-red-600 hover:text-red-800"
+                    >
+                      Xóa ảnh
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      stroke="currentColor"
+                      fill="none"
+                      viewBox="0 0 48 48"
+                    >
+                      <path
+                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="flex text-sm text-gray-600">
+                      <label className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                        <span>Tải lên hình ảnh</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                      <p className="pl-1">hoặc kéo thả</p>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      PNG, JPG, GIF tối đa 10MB
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="flex justify-end space-x-2">
             <button
-              onClick={() => setIsCreateDialogOpen(false)}
+              onClick={() => {
+                setIsCreateDialogOpen(false);
+                resetForm();
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
             >
               Hủy
@@ -425,7 +549,11 @@ const Specialties: React.FC = () => {
       {/* Edit Modal */}
       <Modal
         isOpen={isEditDialogOpen}
-        onClose={() => setIsEditDialogOpen(false)}
+        onClose={() => {
+          setIsEditDialogOpen(false);
+          setEditingSpecialty(null);
+          resetForm();
+        }}
         title="Chỉnh sửa chuyên khoa"
       >
         <div className="space-y-4">
@@ -465,9 +593,74 @@ const Specialties: React.FC = () => {
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
             />
           </div>
+
+          {/* Image Upload for Edit */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Hình ảnh chuyên khoa
+            </label>
+            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-lg">
+              <div className="space-y-1 text-center">
+                {imagePreview || editingSpecialty?.thumbnailUrl ? (
+                  <div className="space-y-2">
+                    <img
+                      src={imagePreview || editingSpecialty?.thumbnailUrl}
+                      alt="Preview"
+                      className="mx-auto h-32 w-32 object-cover rounded-lg"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setImageFile(null);
+                        setImagePreview(null);
+                      }}
+                      className="text-sm text-red-600 hover:text-red-800"
+                    >
+                      {imagePreview ? "Xóa ảnh mới" : "Xóa ảnh hiện tại"}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <svg
+                      className="mx-auto h-12 w-12 text-gray-400"
+                      stroke="currentColor"
+                      fill="none"
+                      viewBox="0 0 48 48"
+                    >
+                      <path
+                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    <div className="flex text-sm text-gray-600">
+                      <label className="relative cursor-pointer bg-white rounded-md font-medium text-indigo-600 hover:text-indigo-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-indigo-500">
+                        <span>Tải lên hình ảnh</span>
+                        <input
+                          type="file"
+                          className="sr-only"
+                          accept="image/*"
+                          onChange={handleImageChange}
+                        />
+                      </label>
+                      <p className="pl-1">hoặc kéo thả</p>
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      PNG, JPG, GIF tối đa 10MB
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
           <div className="flex justify-end space-x-2">
             <button
-              onClick={() => setIsEditDialogOpen(false)}
+              onClick={() => {
+                setIsEditDialogOpen(false);
+                setEditingSpecialty(null);
+                resetForm();
+              }}
               className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
             >
               Hủy

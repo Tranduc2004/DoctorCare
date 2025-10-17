@@ -14,7 +14,13 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.rescheduleAccept = exports.reschedulePropose = void 0;
 // Patient Controllers Index
 __exportStar(require("./appointmentController"), exports);
 __exportStar(require("./medicalRecordController"), exports);
+__exportStar(require("./prescriptionController"), exports);
 __exportStar(require("./authController"), exports);
+// new exports
+var appointmentController_1 = require("./appointmentController");
+Object.defineProperty(exports, "reschedulePropose", { enumerable: true, get: function () { return appointmentController_1.reschedulePropose; } });
+Object.defineProperty(exports, "rescheduleAccept", { enumerable: true, get: function () { return appointmentController_1.rescheduleAccept; } });

@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { adminAuth } from "../middlewares/adminAuth";
+import { adminAuth, uploadSingle } from "../middlewares";
 import {
   getAllSpecialties,
   searchSpecialties,
@@ -29,10 +29,10 @@ router.get("/active/list", getActiveSpecialties);
 router.get("/:id", getSpecialtyById);
 
 // Tạo chuyên khoa mới
-router.post("/", createSpecialty);
+router.post("/", uploadSingle, createSpecialty);
 
 // Cập nhật chuyên khoa
-router.put("/:id", updateSpecialty);
+router.put("/:id", uploadSingle, updateSpecialty);
 
 // Xóa chuyên khoa (soft delete)
 router.delete("/:id", deleteSpecialty);

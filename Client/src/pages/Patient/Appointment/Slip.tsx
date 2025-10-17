@@ -2,7 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { paymentApi } from "../../../api/paymentApi";
-import AppointmentSlipView from "../../../components/AppointmentSlipView";
+import AppointmentSlipView from "../../../components/Patient/Appointment/AppointmentSlipView";
 import { getMyAppointments } from "../../../api/appointmentApi";
 import { useAuth } from "../../../contexts/AuthContext";
 import { specialtyApi, ISpecialty } from "../../../api/specialtyApi";
@@ -60,6 +60,7 @@ export default function AppointmentSlipPage() {
     serviceLabel?: string;
     mode?: string;
     appointmentTime?: string;
+    appointmentDate?: string; // added to support HH:mm + date format
     schedule?: { date?: string; startTime?: string; endTime?: string } | string;
     slot?: { date?: string; startTime?: string; endTime?: string } | string;
     scheduleId?:
@@ -133,20 +134,6 @@ export default function AppointmentSlipPage() {
   })();
 
   // Helper functions from History.tsx for better data extraction
-  function formatDate(d?: string) {
-    if (!d) return "--";
-    try {
-      return new Date(d).toLocaleDateString();
-    } catch {
-      return d;
-    }
-  }
-
-  function formatRange(s?: string, e?: string) {
-    if (!s || !e) return "--";
-    return `${s} – ${e}`;
-  }
-
   function parseService(note?: string) {
     if (!note) return "";
     const m = note.match(/\[Dịch vụ\]\s*([^|]+)/);
@@ -322,7 +309,7 @@ export default function AppointmentSlipPage() {
   // Enhanced service label extraction with multiple fallback sources (including note parsing like History.tsx)
   const extractedServiceRaw = (() => {
     // First try to parse service from note field (like History.tsx)
-    const serviceFromNote = parseService((appointment as any)?.note);
+    const serviceFromNote = parseService((appointment as AppointmentObj)?.note);
     if (serviceFromNote) return serviceFromNote;
 
     // Try serviceType
@@ -353,7 +340,9 @@ export default function AppointmentSlipPage() {
     // Try any other service-related fields
     const serviceFields = ["serviceId", "serviceName", "serviceTitle"];
     for (const field of serviceFields) {
-      const value = (appointment as any)?.[field];
+      const value = (appointment as AppointmentObj)?.[
+        field as keyof AppointmentObj
+      ];
       if (value && typeof value === "string") {
         return value;
       }
@@ -439,25 +428,34 @@ export default function AppointmentSlipPage() {
     }
 
     // Handle appointmentTime as HH:mm format with separate appointmentDate
-    if (maybe.appointmentTime && maybe.appointmentDate && 
-        typeof maybe.appointmentTime === "string" && 
-        typeof maybe.appointmentDate === "string") {
+    if (
+      maybe.appointmentTime &&
+      maybe.appointmentDate &&
+      typeof maybe.appointmentTime === "string" &&
+      typeof maybe.appointmentDate === "string"
+    ) {
       // appointmentTime is likely in HH:mm format, appointmentDate is YYYY-MM-DD
       const timePattern = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
       if (timePattern.test(maybe.appointmentTime)) {
-        return { 
-          date: maybe.appointmentDate, 
-          startTime: maybe.appointmentTime, 
-          endTime: maybe.appointmentTime 
+        return {
+          date: maybe.appointmentDate,
+          startTime: maybe.appointmentTime,
+          endTime: maybe.appointmentTime,
         };
       }
     }
 
     // Try to extract from any date-like string fields (enhanced like History.tsx)
-    const dateFields = ["date", "appointmentDate", "scheduleDate", "createdAt", "updatedAt"];
-    
+    const dateFields = [
+      "date",
+      "appointmentDate",
+      "scheduleDate",
+      "createdAt",
+      "updatedAt",
+    ];
+
     for (const field of dateFields) {
-      const value = (maybe as any)[field];
+      const value = (maybe as AppointmentObj)[field as keyof AppointmentObj];
       if (value && typeof value === "string") {
         try {
           const d = new Date(value);
@@ -478,10 +476,10 @@ export default function AppointmentSlipPage() {
 
     // Try to extract from common time fields
     const timeFields = ["time", "startTime", "endTime"];
-    let extractedTime: { startTime?: string; endTime?: string } = {};
-    
+    const extractedTime: { startTime?: string; endTime?: string } = {};
+
     for (const field of timeFields) {
-      const value = (maybe as any)[field];
+      const value = (maybe as AppointmentObj)[field as keyof AppointmentObj];
       if (value && typeof value === "string") {
         if (field === "startTime") extractedTime.startTime = value;
         if (field === "endTime") extractedTime.endTime = value;
@@ -572,12 +570,17 @@ export default function AppointmentSlipPage() {
               try {
                 if (!overrideServiceLabel) {
                   let svc = null as string | null;
-                  
+
                   // First try to parse from note (like History.tsx)
-                  const serviceFromNote = parseService((found as any)?.note);
+                  const serviceFromNote = parseService(
+                    (found as AppointmentObj)?.note
+                  );
                   if (serviceFromNote) {
                     svc = serviceFromNote;
-                  } else if (found.service && typeof found.service !== "string") {
+                  } else if (
+                    found.service &&
+                    typeof found.service !== "string"
+                  ) {
                     const sObj = found.service as {
                       name?: string;
                       label?: string;
@@ -619,7 +622,7 @@ export default function AppointmentSlipPage() {
   // Extract specialty and status information
   const doctorSpecialty = getDoctorSpecialty(appointment);
   const appointmentStatus = statusLabel(appointment?.status as string);
-  
+
   // Format invoice status for display
   const formatInvoiceStatus = (status?: string | null) => {
     if (!status) return "Chưa có hóa đơn";

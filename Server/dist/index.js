@@ -18,6 +18,13 @@ const cors_1 = __importDefault(require("cors"));
 const dotenv_1 = __importDefault(require("dotenv"));
 const path_1 = __importDefault(require("path"));
 const http_1 = __importDefault(require("http"));
+// Configure dotenv FIRST, before any other imports that might use env vars
+// Look for .env file in the project root
+dotenv_1.default.config({ path: path_1.default.resolve(__dirname, "../.env") });
+// Debug: Log if env file is loaded
+console.log("ENV file path:", path_1.default.resolve(__dirname, "../.env"));
+console.log("EMAIL_USER from env:", process.env.EMAIL_USER);
+console.log("EMAIL_PASS configured:", !!process.env.EMAIL_PASS);
 const socket_1 = require("./utils/socket");
 const markExpiredInvoices_1 = require("./utils/markExpiredInvoices");
 // Import modules
@@ -27,19 +34,29 @@ const routes_3 = __importDefault(require("./modules/doctor/routes"));
 const routes_4 = require("./modules/shared/routes");
 const pricingRoutes_1 = __importDefault(require("./modules/pricing/routes/pricingRoutes"));
 const utils_1 = require("./shared/utils");
-dotenv_1.default.config();
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 const PORT = process.env.PORT || 5000;
 // Middleware
 app.use((0, cors_1.default)());
-app.use(express_1.default.json());
+// Capture raw body for webhook signature verification (e.g., PayOS)
+app.use(express_1.default.json({
+    verify: (req, res, buf) => {
+        try {
+            req.rawBody = buf.toString();
+        }
+        catch (_a) { }
+    },
+}));
 app.use(express_1.default.urlencoded({ extended: true }));
 // Serve static files from uploads directory
 app.use("/uploads", express_1.default.static(path_1.default.join(__dirname, "../uploads")));
 // Routes - Mỗi module có auth riêng
 app.use("/api/admin", routes_1.default);
 app.use("/api/patient", routes_2.default);
+// Alias: also expose patient routes without the /api prefix for compatibility
+// with external services configured to call /patient/... (e.g., PayOS webhook)
+app.use("/patient", routes_2.default);
 app.use("/api/doctor", routes_3.default);
 // Shared routes (công khai)
 app.use("/api/specialties", routes_4.specialtyRoutes);
@@ -64,8 +81,9 @@ app.use("*", (req, res) => {
     res.status(404).json({ error: "Route not found" });
 });
 mongoose_1.default
-    .connect(process.env.MONGO_URI)
+    .connect(process.env.MONGODB_URI)
     .then(() => __awaiter(void 0, void 0, void 0, function* () {
+    console.log("MONGODB_URI:", process.env.MONGODB_URI);
     console.log("Kết nối MongoDB thành công!");
     server.listen(PORT, () => {
         console.log(`Server đang chạy tại http://localhost:${PORT}`);

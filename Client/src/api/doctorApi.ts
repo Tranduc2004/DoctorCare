@@ -4,7 +4,9 @@ const API_URL = "http://localhost:5000/api";
 
 // Helper function to get auth headers
 const getAuthHeaders = () => {
-  const token = sessionStorage.getItem("doctor_token") || localStorage.getItem("doctor_token");
+  const token =
+    sessionStorage.getItem("doctor_token") ||
+    localStorage.getItem("doctor_token");
   return {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -65,7 +67,9 @@ export interface DashboardStats {
 // API Functions
 
 // Get doctor's appointments
-export const getDoctorAppointments = async (doctorId: string): Promise<DoctorAppointment[]> => {
+export const getDoctorAppointments = async (
+  doctorId: string
+): Promise<DoctorAppointment[]> => {
   try {
     const response = await axios.get(
       `${API_URL}/doctor/appointments?doctorId=${doctorId}`,
@@ -79,18 +83,21 @@ export const getDoctorAppointments = async (doctorId: string): Promise<DoctorApp
 };
 
 // Get appointments by date
-export const getAppointmentsByDate = async (doctorId: string, date: string): Promise<DoctorAppointment[]> => {
+export const getAppointmentsByDate = async (
+  doctorId: string,
+  date: string
+): Promise<DoctorAppointment[]> => {
   try {
     const response = await axios.get(
       `${API_URL}/doctor/appointments/by-date?doctorId=${doctorId}&date=${date}`,
       getAuthHeaders()
     );
-    
+
     // Xử lý response mới từ server
     if (response.data.success) {
       return response.data.data;
     }
-    
+
     // Fallback cho response cũ
     return response.data.data || response.data;
   } catch (error) {
@@ -100,7 +107,9 @@ export const getAppointmentsByDate = async (doctorId: string, date: string): Pro
 };
 
 // Get appointment statistics
-export const getAppointmentStats = async (doctorId: string): Promise<AppointmentStats> => {
+export const getAppointmentStats = async (
+  doctorId: string
+): Promise<AppointmentStats> => {
   try {
     const response = await axios.get(
       `${API_URL}/doctor/appointments/stats?doctorId=${doctorId}`,
@@ -114,41 +123,52 @@ export const getAppointmentStats = async (doctorId: string): Promise<Appointment
 };
 
 // Get today's appointments
-export const getTodayAppointments = async (doctorId: string): Promise<DoctorAppointment[]> => {
+export const getTodayAppointments = async (
+  doctorId: string
+): Promise<DoctorAppointment[]> => {
   // Use local timezone instead of UTC to get correct date
   const now = new Date();
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-  console.log("Getting today's appointments for doctor:", doctorId, "on date:", today);
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(now.getDate()).padStart(2, "0")}`;
   const result = await getAppointmentsByDate(doctorId, today);
-  console.log("Today's appointments result:", result);
   return result;
 };
 
 // Get dashboard statistics (calculated from appointments)
-export const getDashboardStats = async (doctorId: string): Promise<DashboardStats> => {
+export const getDashboardStats = async (
+  doctorId: string
+): Promise<DashboardStats> => {
   try {
     const appointments = await getDoctorAppointments(doctorId);
     // Use local timezone instead of UTC to get correct date
     const now = new Date();
-    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-    
+    const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}-${String(now.getDate()).padStart(2, "0")}`;
+
     // Calculate stats from appointments
-    const totalAppointments = appointments.length;
-    const completedAppointments = appointments.filter(apt => 
-      ['completed', 'prescription_issued', 'final', 'closed'].includes(apt.status)
+    const completedAppointments = appointments.filter((apt) =>
+      ["completed", "prescription_issued", "final", "closed"].includes(
+        apt.status
+      )
     ).length;
-    const pendingAppointments = appointments.filter(apt => 
-      ['booked', 'confirmed', 'await_payment', 'paid'].includes(apt.status)
+    const pendingAppointments = appointments.filter((apt) =>
+      ["booked", "confirmed", "await_payment", "paid"].includes(apt.status)
     ).length;
-    const cancelledAppointments = appointments.filter(apt => 
-      apt.status === 'cancelled'
+    const cancelledAppointments = appointments.filter(
+      (apt) => apt.status === "cancelled"
     ).length;
-    const todayAppointments = appointments.filter(apt => 
-      apt.scheduleId?.date === today
+    const todayAppointments = appointments.filter(
+      (apt) => apt.scheduleId?.date === today
     ).length;
 
     // Get unique patients
-    const uniquePatients = new Set(appointments.map(apt => apt.patientId._id));
+    const uniquePatients = new Set(
+      appointments.map((apt) => apt.patientId._id)
+    );
     const totalPatients = uniquePatients.size;
 
     // Calculate percentage changes (mock data for now - would need historical data)
@@ -177,17 +197,20 @@ export const getDashboardStats = async (doctorId: string): Promise<DashboardStat
 export const getRecentActivities = async (doctorId: string) => {
   try {
     const appointments = await getDoctorAppointments(doctorId);
-    
+
     // Sort by most recent and take last 10
     const recentAppointments = appointments
-      .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+      .sort(
+        (a, b) =>
+          new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      )
       .slice(0, 10);
 
     // Transform to activity format
-    const activities = recentAppointments.map(apt => {
+    const activities = recentAppointments.map((apt) => {
       let action = "Lịch hẹn mới";
       let color = "blue";
-      
+
       switch (apt.status) {
         case "completed":
         case "prescription_issued":
@@ -228,7 +251,10 @@ export const getRecentActivities = async (doctorId: string) => {
 };
 
 // Update appointment status
-export const updateAppointmentStatus = async (appointmentId: string, status: string) => {
+export const updateAppointmentStatus = async (
+  appointmentId: string,
+  status: string
+) => {
   try {
     const response = await axios.put(
       `${API_URL}/doctor/appointments/${appointmentId}/status`,

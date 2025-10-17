@@ -8,7 +8,11 @@ export interface IService {
   name: string;
   description: string;
   price: number;
+  duration: number;
   isActive: boolean;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imagePublicId?: string;
   createdAt: string;
   updatedAt: string;
 }

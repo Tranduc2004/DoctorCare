@@ -52,6 +52,14 @@ const AppointmentSchema = new mongoose_1.Schema({
     note: { type: String },
     appointmentTime: { type: String, required: true },
     appointmentDate: { type: String, required: true },
+    // Patient contact info from booking form
+    patientInfo: {
+        name: { type: String },
+        phone: { type: String },
+        email: { type: String },
+    },
+    // Which high-level service was selected at booking (e.g. KHAM_CHUYEN_KHOA)
+    serviceType: { type: String },
     // Payment fields
     consultationFee: { type: Number, min: 0 },
     depositAmount: { type: Number, min: 0 },

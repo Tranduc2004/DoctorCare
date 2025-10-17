@@ -10,22 +10,25 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { useEffect } from "react";
 import { PaymentProvider } from "./contexts/PaymentContext";
-import AuthContainer from "./components/Auth/AuthContainer";
+import AuthContainer from "./components/Patient/Auth/AuthContainer";
 import Home from "./pages/Patient/Home/Home";
 import { Payment, PaymentHistory } from "./pages/Patient/Payment";
-import Header from "./components/Header/Header";
-import Footer from "./components/Footer/Footer";
+import PaymentSuccess from "./pages/Patient/Payment/PaymentSuccess";
+import PaymentFailure from "./pages/Patient/Payment/PaymentFailure";
+import VNPayReturn from "./pages/Patient/Payment/VNPayReturn";
+import Header from "./components/Patient/Header/Header";
+import Footer from "./components/Patient/Footer/Footer";
 import "./App.css";
 import { ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import AppointmentPage from "./pages/Patient/Appointment/Appointment";
 import AppointmentHistoryPage from "./pages/Patient/Appointment/History";
 import AppointmentSlipPage from "./pages/Patient/Appointment/Slip";
-import DoctorsPage from "./pages/Patient/Home/Doctors";
-import DoctorDetailPage from "./pages/Patient/Home/DoctorDetail";
-import PatientChatPage from "./pages/Patient/Home/Chat";
-import PatientProfilePage from "./pages/Patient/Home/Profile";
-import NotificationsPage from "./pages/Patient/Notifications";
+import DoctorsPage from "./pages/Patient/DoctorInfo/Doctors";
+import DoctorDetailPage from "./pages/Patient/DoctorInfo/DoctorDetail";
+import PatientChatPage from "./pages/Patient/Chat/Chat";
+import PatientProfilePage from "./pages/Patient/Profile/Profile";
+import NotificationsPage from "./pages/Patient/Notifications/Notifications";
 
 //Doctor
 import LoginDoctor from "./pages/Doctor/Login/Login";
@@ -36,9 +39,11 @@ import DoctorAppointmentsPage from "./pages/Doctor/Appointments/Appointments";
 import DoctorProfilePage from "./pages/Doctor/Profile/Profile";
 import DoctorMessagesPage from "./pages/Doctor/Messages/Messages";
 import MedicalRecordsPage from "./pages/Doctor/MedicalRecords/MedicalRecords";
-import ProtectedRoute from "./components/Auth/ProtectedRoute";
-import DoctorLayout from "./components/layout/DoctorLayout";
-import GlobalChatNotifier from "./components/Chat/GlobalChatNotifier";
+import PatientMedicalRecordsPage from "./pages/Patient/MedicalRecords/MedicalRecords";
+import PrescriptionsPage from "./pages/Patient/Prescriptions/PrescriptionsPage";
+import ProtectedRoute from "./components/Patient/Auth/ProtectedRoute";
+import DoctorLayout from "./components/Doctor/Layout/DoctorLayout";
+import GlobalChatNotifier from "./components/Doctor/Chat/GlobalChatNotifier";
 import ErrorBoundary from "./components/ErrorBoundary";
 
 //Patient
@@ -106,7 +111,9 @@ function AppContent() {
     location.pathname === "/notifications" ||
     location.pathname.startsWith("/services") ||
     location.pathname.startsWith("/specialties") ||
-    location.pathname.startsWith("/alldoctors");
+    location.pathname.startsWith("/alldoctors") ||
+    location.pathname.startsWith("/prescriptions") ||
+    location.pathname.startsWith("/medical-records");
 
   const isAuthPage =
     location.pathname === "/login" ||
@@ -277,11 +284,32 @@ function AppContent() {
             </PrivateRoute>
           }
         />
+
+        {/* VNPay Payment Result Routes */}
+        <Route path="/payment/success" element={<PaymentSuccess />} />
+        <Route path="/payment/failure" element={<PaymentFailure />} />
+        <Route path="/payment/vnpay/return" element={<VNPayReturn />} />
         <Route
           path="/appointments/:appointmentId/slip"
           element={
             <PrivateRoute allowedRoles={["patient"]}>
               <AppointmentSlipPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/medical-records"
+          element={
+            <PrivateRoute allowedRoles={["patient"]}>
+              <PatientMedicalRecordsPage />
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/prescriptions/my"
+          element={
+            <PrivateRoute allowedRoles={["patient"]}>
+              <PrescriptionsPage />
             </PrivateRoute>
           }
         />

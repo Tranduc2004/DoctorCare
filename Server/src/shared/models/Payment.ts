@@ -1,93 +1,121 @@
 import mongoose, { Schema, Document } from "mongoose";
-import { PaymentStatus, PaymentType } from "../types/appointment";
+import { PaymentStatus } from "../types/appointment";
 
 export interface IPayment extends Document {
-  appointmentId: mongoose.Types.ObjectId;
+  // Required references
   patientId: mongoose.Types.ObjectId;
-  doctorId: mongoose.Types.ObjectId;
+  appointmentId: mongoose.Types.ObjectId;
+  invoiceId?: mongoose.Types.ObjectId;
+  prescriptionId?: mongoose.Types.ObjectId;
+
+  // Payment details
   amount: number;
-  description: string;
-  type: PaymentType;
   status: PaymentStatus;
-  transactionId?: string;
-  paymentMethod?: string;
-  paidAt?: Date;
+  paymentMethod: "banking" | "wallet" | "payos";
+  description: string;
+
+  // Transaction tracking
+  transactionId?: string; // Timestamps
   dueDate?: Date;
+  authorizedAt?: Date;
+  capturedAt?: Date;
+  failedAt?: Date;
   refundedAt?: Date;
+
+  // Refund information
   refundAmount?: number;
-  insuranceCoverage?: number;
-  patientAmount: number;
+  refundReason?: string;
+
+  // Payment provider specific fields
+  vnpayTxnRef?: string;
+  vnpayResponseCode?: string;
+
+  // Bank transfer details
+  paymentDetails?: {
+    bankName?: string;
+    accountNumber?: string;
+    accountHolder?: string;
+    transactionRef?: string;
+    paymentProof?: string;
+  };
+
+  // Timestamps from schema
   createdAt: Date;
   updatedAt: Date;
 }
 
 const PaymentSchema: Schema = new Schema(
   {
-    appointmentId: {
-      type: Schema.Types.ObjectId,
-      ref: "Appointment",
-      required: true,
-    },
+    // Required references
     patientId: {
       type: Schema.Types.ObjectId,
       ref: "Patient",
       required: true,
     },
-    doctorId: {
+    appointmentId: {
       type: Schema.Types.ObjectId,
-      ref: "Doctor",
+      ref: "Appointment",
       required: true,
     },
+    invoiceId: {
+      type: Schema.Types.ObjectId,
+      ref: "Invoice",
+    },
+    prescriptionId: {
+      type: Schema.Types.ObjectId,
+      ref: "Prescription",
+    },
+    // Payment details
     amount: {
       type: Number,
       required: true,
       min: 0,
-    },
-    description: {
-      type: String,
-      required: true,
-    },
-    type: {
-      type: String,
-      enum: Object.values(PaymentType),
-      required: true,
     },
     status: {
       type: String,
       enum: Object.values(PaymentStatus),
       default: PaymentStatus.PENDING,
     },
+    paymentMethod: {
+      type: String,
+      enum: ["banking", "wallet", "payos", "vnpay"],
+      required: true,
+    },
+    description: {
+      type: String,
+      required: true,
+    },
     transactionId: String,
-    paymentMethod: String,
-    paidAt: Date,
-    dueDate: Date,
+
+    // Timestamps and tracking
+    authorizedAt: Date,
+    capturedAt: Date,
+    failedAt: Date,
     refundedAt: Date,
     refundAmount: {
       type: Number,
       min: 0,
     },
-    insuranceCoverage: {
-      type: Number,
-      min: 0,
-      default: 0,
+
+    // VNPay fields
+    vnpayTxnRef: {
+      type: String,
+      index: true,
     },
-    patientAmount: {
-      type: Number,
-      required: true,
-      min: 0,
-    },
+    vnpayResponseCode: String,
   },
   {
     timestamps: true,
   }
 );
 
-// Add index for faster queries
+// Add indexes for faster queries
 PaymentSchema.index({ appointmentId: 1 });
+PaymentSchema.index({ invoiceId: 1 });
 PaymentSchema.index({ patientId: 1 });
-PaymentSchema.index({ doctorId: 1 });
 PaymentSchema.index({ status: 1 });
-PaymentSchema.index({ createdAt: 1 });
+PaymentSchema.index({ createdAt: -1 });
+PaymentSchema.index({ vnpayTxnRef: 1 });
 
 // Add methods to check payment state
 PaymentSchema.methods.isPaid = function (): boolean {

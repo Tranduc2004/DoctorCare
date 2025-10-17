@@ -20,3 +20,5 @@ __exportStar(require("./medicalRecordController"), exports);
 __exportStar(require("./scheduleController"), exports);
 __exportStar(require("./authController"), exports);
 __exportStar(require("./doctorController"), exports);
+// re-export decision controller helpers
+__exportStar(require("./appointmentDecisionController"), exports);

@@ -30,7 +30,22 @@ function computeConsultPrice(ctx) {
         // 1. find base price from Service model (by name/serviceCode)
         let service = null;
         if (ctx.serviceCode) {
-            service = yield Service_1.default.findOne({ name: ctx.serviceCode });
+            // Try exact match first (case-insensitive), then partial contains
+            const escapeForRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const code = String(ctx.serviceCode).trim();
+            try {
+                service = yield Service_1.default.findOne({
+                    name: { $regex: `^${escapeForRegex(code)}$`, $options: "i" },
+                });
+                if (!service) {
+                    service = yield Service_1.default.findOne({
+                        name: { $regex: escapeForRegex(code), $options: "i" },
+                    });
+                }
+            }
+            catch (e) {
+                // fallback to default behavior below
+            }
         }
         // fallback to any active service if specific one not found
         if (!service) {

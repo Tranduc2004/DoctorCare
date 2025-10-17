@@ -22,7 +22,22 @@ export async function computeConsultPrice(ctx: PricingCtx) {
   // 1. find base price from Service model (by name/serviceCode)
   let service = null as any;
   if (ctx.serviceCode) {
-    service = await Service.findOne({ name: ctx.serviceCode });
+    // Try exact match first (case-insensitive), then partial contains
+    const escapeForRegex = (s: string) =>
+      s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const code = String(ctx.serviceCode).trim();
+    try {
+      service = await Service.findOne({
+        name: { $regex: `^${escapeForRegex(code)}$`, $options: "i" },
+      });
+      if (!service) {
+        service = await Service.findOne({
+          name: { $regex: escapeForRegex(code), $options: "i" },
+        });
+      }
+    } catch (e) {
+      // fallback to default behavior below
+    }
   }
   // fallback to any active service if specific one not found
   if (!service) {

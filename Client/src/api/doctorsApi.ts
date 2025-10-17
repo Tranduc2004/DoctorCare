@@ -17,3 +17,8 @@ export const getDoctors = (specialty?: string) =>
 
 export const getDoctorById = (id: string) =>
   axios.get(`${BASE_URL}/doctor/doctors/${id}`).then((r) => r.data);
+
+export const getDoctorSchedules = (doctorId: string) =>
+  axios
+    .get(`${BASE_URL}/doctor/doctors/schedules/${doctorId}`)
+    .then((r) => r.data);

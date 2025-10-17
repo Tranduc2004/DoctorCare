@@ -121,7 +121,27 @@ export const approveAppointment = async (req: Request, res: Response) => {
               const m = note.match(/\[Dịch vụ\]\s*([^|\n]+)/);
               return m?.[1]?.trim() || "";
             };
-            const serviceCode = parseService(appointment.note) || "";
+            const SERVICE_LABEL_MAP: Record<string, string> = {
+              KHAM_CHUYEN_KHOA: "Khám chuyên khoa",
+              KHAM_TONG_QUAT: "Khám tổng quát",
+              GOI_DINH_KY: "Khám định kỳ",
+              TU_VAN_DINH_DUONG: "Tư vấn dinh dưỡng",
+              TU_VAN_TAM_LY: "Tư vấn tâm lý",
+            };
+            const rawSvcFromType = appointment.serviceType
+              ? SERVICE_LABEL_MAP[String(appointment.serviceType)] ||
+                String(appointment.serviceType)
+              : "";
+            const fromNote = parseService(appointment.note) || "";
+            const normalizeServiceLabel = (s: string) => {
+              if (!s) return "";
+              const idx = s.indexOf("(");
+              return (idx >= 0 ? s.slice(0, idx) : s).trim();
+            };
+            const serviceCode =
+              normalizeServiceLabel(rawSvcFromType) ||
+              normalizeServiceLabel(fromNote) ||
+              "";
             const durationMin = 45;
             const startAt = new Date(
               `${appointment.appointmentDate}T${appointment.appointmentTime}:00`
@@ -484,10 +504,10 @@ export const startConsultation = async (req: Request, res: Response) => {
     try {
       // Check if medical record already exists for this appointment
       const existingRecord = await MedicalRecord.findOne({ appointmentId });
-      
+
       if (!existingRecord) {
         const patient = appointment.patientId as any;
-        
+
         medicalRecord = await MedicalRecord.create({
           appointmentId: appointment._id,
           patient: patient._id,
@@ -507,10 +527,12 @@ export const startConsultation = async (req: Request, res: Response) => {
           preliminaryDiagnosis: "Chưa có chẩn đoán sơ bộ",
           diagnosis: "Chưa có chẩn đoán cuối cùng",
           treatment: "Chưa có phương pháp điều trị",
-          status: "in_progress"
+          status: "in_progress",
         });
 
-        console.log(`Created medical record ${medicalRecord._id} for appointment ${appointmentId}`);
+        console.log(
+          `Created medical record ${medicalRecord._id} for appointment ${appointmentId}`
+        );
       } else {
         medicalRecord = existingRecord;
         // Update status to in_progress if it was draft
@@ -518,7 +540,9 @@ export const startConsultation = async (req: Request, res: Response) => {
           existingRecord.status = "in_progress";
           await existingRecord.save();
         }
-        console.log(`Using existing medical record ${existingRecord._id} for appointment ${appointmentId}`);
+        console.log(
+          `Using existing medical record ${existingRecord._id} for appointment ${appointmentId}`
+        );
       }
     } catch (err) {
       console.error(
@@ -532,12 +556,14 @@ export const startConsultation = async (req: Request, res: Response) => {
     res.json({
       message: "Đã bắt đầu khám",
       appointment,
-      medicalRecord: medicalRecord ? {
-        id: medicalRecord._id,
-        status: medicalRecord.status
-      } : null,
+      medicalRecord: medicalRecord
+        ? {
+            id: medicalRecord._id,
+            status: medicalRecord.status,
+          }
+        : null,
     });
-    
+
     try {
       await createNotification({
         userId: String(appointment.patientId),

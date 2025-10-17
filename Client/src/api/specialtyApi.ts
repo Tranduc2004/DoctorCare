@@ -8,6 +8,9 @@ export interface ISpecialty {
   name: string;
   description: string;
   isActive: boolean;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imagePublicId?: string;
   createdAt: string;
   updatedAt: string;
 }

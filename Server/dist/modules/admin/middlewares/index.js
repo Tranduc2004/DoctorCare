@@ -17,3 +17,4 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // Admin Middlewares Index
 __exportStar(require("./adminAuth"), exports);
 __exportStar(require("./roleMiddleware"), exports);
+__exportStar(require("./uploadMiddleware"), exports);

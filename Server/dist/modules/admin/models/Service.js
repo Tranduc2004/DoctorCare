@@ -39,31 +39,63 @@ const ServiceSchema = new mongoose_1.Schema({
         type: String,
         required: true,
         trim: true,
-        unique: true
+        unique: true,
     },
     description: {
         type: String,
         required: true,
-        trim: true
+        trim: true,
     },
     price: {
         type: Number,
         required: true,
-        min: 0
+        min: 0,
     },
     duration: {
         type: Number,
         required: true,
         min: 15,
-        default: 30
+        default: 30,
+    },
+    imageUrl: {
+        type: String,
+        required: false,
+    },
+    imagePublicId: {
+        type: String,
+        required: false,
+    },
+    thumbnailUrl: {
+        type: String,
+        required: false,
+    },
+    included: {
+        type: [String],
+        required: false,
+        default: [],
+    },
+    excluded: {
+        type: [String],
+        required: false,
+        default: [],
+    },
+    preparation: {
+        type: String,
+        required: false,
+        trim: true,
+    },
+    aftercare: {
+        type: String,
+        required: false,
+        trim: true,
     },
     isActive: {
         type: Boolean,
-        default: true
-    }
+        default: true,
+    },
 }, {
-    timestamps: true
+    timestamps: true,
 });
 // Index để tìm kiếm nhanh
-ServiceSchema.index({ name: 'text', description: 'text' });
-exports.default = mongoose_1.default.model('Service', ServiceSchema);
+ServiceSchema.index({ name: "text", description: "text" });
+exports.default = mongoose_1.default.model("Service", ServiceSchema);

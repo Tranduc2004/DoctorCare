@@ -39,20 +39,32 @@ const SpecialtySchema = new mongoose_1.Schema({
         type: String,
         required: true,
         trim: true,
-        unique: true
+        unique: true,
     },
     description: {
         type: String,
         required: true,
-        trim: true
+        trim: true,
+    },
+    imageUrl: {
+        type: String,
+        required: false,
+    },
+    imagePublicId: {
+        type: String,
+        required: false,
+    },
+    thumbnailUrl: {
+        type: String,
+        required: false,
     },
     isActive: {
         type: Boolean,
-        default: true
-    }
+        default: true,
+    },
 }, {
-    timestamps: true
+    timestamps: true,
 });
 // Index để tìm kiếm nhanh
-SpecialtySchema.index({ name: 'text', description: 'text' });
-exports.default = mongoose_1.default.model('Specialty', SpecialtySchema);
+SpecialtySchema.index({ name: "text", description: "text" });
+exports.default = mongoose_1.default.model("Specialty", SpecialtySchema);

@@ -6,4 +6,5 @@ const router = (0, express_1.Router)();
 router.get("/profile", profileController_1.getProfile);
 router.put("/profile", profileController_1.upsertProfile);
 router.put("/insurance", profileController_1.upsertInsurance);
+router.post("/sync-from-medical-record", profileController_1.syncFromMedicalRecord);
 exports.default = router;

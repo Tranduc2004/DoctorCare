@@ -21,6 +21,7 @@ const appointment_1 = require("../../../shared/types/appointment");
 const payment_1 = require("../../../shared/constants/payment");
 const notificationService_1 = require("../../../shared/services/notificationService");
 const Encounter_1 = __importDefault(require("../../encounter/models/Encounter"));
+const MedicalRecord_1 = __importDefault(require("../../patient/models/MedicalRecord"));
 // Doctor approves appointment
 const approveAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -56,114 +57,144 @@ const approveAppointment = (req, res) => __awaiter(void 0, void 0, void 0, funct
         yield appointment.save();
         // After saving appointment, attempt to create a consultation invoice (idempotent)
         try {
-            const existing = yield Invoice_1.default.findOne({
-                appointmentId,
-                type: "consultation",
-                status: "pending",
-            });
-            if (!existing) {
-                // If clinic/doctor provided explicit fee, use it; otherwise try compute
-                let createdInvoice = null;
-                const fee = Number(consultationFee !== null && consultationFee !== void 0 ? consultationFee : 0);
-                const deposit = Number(depositAmount !== null && depositAmount !== void 0 ? depositAmount : 0);
-                if (fee > 0 || deposit > 0) {
-                    createdInvoice = yield Invoice_1.default.create({
-                        appointmentId,
-                        type: "consultation",
-                        items: [
-                            ...(fee > 0
-                                ? [
-                                    {
-                                        type: "consultation_fee",
-                                        description: "Phí khám cơ bản",
-                                        amount: fee,
-                                        insuranceAmount: 0,
-                                        patientAmount: fee,
-                                    },
-                                ]
-                                : []),
-                            ...(deposit > 0
-                                ? [
-                                    {
-                                        type: "deposit",
-                                        description: "Đặt cọc giữ chỗ",
-                                        amount: deposit,
-                                        insuranceAmount: 0,
-                                        patientAmount: deposit,
-                                    },
-                                ]
-                                : []),
-                        ],
-                        subtotal: (fee || 0) + (deposit || 0),
-                        insuranceCoverage: 0,
-                        patientAmount: (fee || 0) + (deposit || 0),
-                        dueDate: new Date(Date.now() + payment_1.PAYMENT_HOLD_MS),
-                    });
-                }
-                else {
-                    // attempt compute from service
-                    const parseService = (note) => {
-                        var _a;
-                        if (!note)
-                            return "";
-                        const m = note.match(/\[Dịch vụ\]\s*([^|\n]+)/);
-                        return ((_a = m === null || m === void 0 ? void 0 : m[1]) === null || _a === void 0 ? void 0 : _a.trim()) || "";
-                    };
-                    const serviceCode = parseService(appointment.note) || "";
-                    const durationMin = 45;
-                    const startAt = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}:00`).toISOString();
-                    const resolveDoctorIdLocal = (d) => {
-                        if (!d)
-                            return undefined;
-                        if (typeof d === "string")
-                            return /^[0-9a-fA-F]{24}$/.test(d) ? d : undefined;
-                        if (typeof d === "object") {
-                            if (d === null || d === void 0 ? void 0 : d._id)
-                                return String(d._id);
-                            try {
-                                const s = String(d);
-                                if (/^[0-9a-fA-F]{24}$/.test(s))
-                                    return s;
+            // If appointment is already paid (captured) or authorized, do not create
+            // a new consultation invoice or set the appointment back to AWAIT_PAYMENT.
+            // This prevents asking patients who already completed payment to pay
+            // again when the doctor re-approves or reconfirms after a reschedule.
+            if (appointment.paymentStatus === appointment_1.PaymentStatus.CAPTURED ||
+                appointment.paymentStatus === appointment_1.PaymentStatus.AUTHORIZED) {
+                // already paid/authorized -> skip invoice creation
+            }
+            else {
+                const existing = yield Invoice_1.default.findOne({
+                    appointmentId,
+                    type: "consultation",
+                    status: "pending",
+                });
+                if (!existing) {
+                    // If clinic/doctor provided explicit fee, use it; otherwise try compute
+                    let createdInvoice = null;
+                    const fee = Number(consultationFee !== null && consultationFee !== void 0 ? consultationFee : 0);
+                    const deposit = Number(depositAmount !== null && depositAmount !== void 0 ? depositAmount : 0);
+                    if (fee > 0 || deposit > 0) {
+                        createdInvoice = yield Invoice_1.default.create({
+                            appointmentId,
+                            type: "consultation",
+                            items: [
+                                ...(fee > 0
+                                    ? [
+                                        {
+                                            type: "consultation_fee",
+                                            description: "Phí khám cơ bản",
+                                            amount: fee,
+                                            insuranceAmount: 0,
+                                            patientAmount: fee,
+                                        },
+                                    ]
+                                    : []),
+                                ...(deposit > 0
+                                    ? [
+                                        {
+                                            type: "deposit",
+                                            description: "Đặt cọc giữ chỗ",
+                                            amount: deposit,
+                                            insuranceAmount: 0,
+                                            patientAmount: deposit,
+                                        },
+                                    ]
+                                    : []),
+                            ],
+                            subtotal: (fee || 0) + (deposit || 0),
+                            insuranceCoverage: 0,
+                            patientAmount: (fee || 0) + (deposit || 0),
+                            dueDate: new Date(Date.now() + payment_1.PAYMENT_HOLD_MS),
+                        });
+                    }
+                    else {
+                        // attempt compute from service
+                        const parseService = (note) => {
+                            var _a;
+                            if (!note)
+                                return "";
+                            const m = note.match(/\[Dịch vụ\]\s*([^|\n]+)/);
+                            return ((_a = m === null || m === void 0 ? void 0 : m[1]) === null || _a === void 0 ? void 0 : _a.trim()) || "";
+                        };
+                        const SERVICE_LABEL_MAP = {
+                            KHAM_CHUYEN_KHOA: "Khám chuyên khoa",
+                            KHAM_TONG_QUAT: "Khám tổng quát",
+                            GOI_DINH_KY: "Khám định kỳ",
+                            TU_VAN_DINH_DUONG: "Tư vấn dinh dưỡng",
+                            TU_VAN_TAM_LY: "Tư vấn tâm lý",
+                        };
+                        const rawSvcFromType = appointment.serviceType
+                            ? SERVICE_LABEL_MAP[String(appointment.serviceType)] ||
+                                String(appointment.serviceType)
+                            : "";
+                        const fromNote = parseService(appointment.note) || "";
+                        const normalizeServiceLabel = (s) => {
+                            if (!s)
+                                return "";
+                            const idx = s.indexOf("(");
+                            return (idx >= 0 ? s.slice(0, idx) : s).trim();
+                        };
+                        const serviceCode = normalizeServiceLabel(rawSvcFromType) ||
+                            normalizeServiceLabel(fromNote) ||
+                            "";
+                        const durationMin = 45;
+                        const startAt = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}:00`).toISOString();
+                        const resolveDoctorIdLocal = (d) => {
+                            if (!d)
+                                return undefined;
+                            if (typeof d === "string")
+                                return /^[0-9a-fA-F]{24}$/.test(d) ? d : undefined;
+                            if (typeof d === "object") {
+                                if (d === null || d === void 0 ? void 0 : d._id)
+                                    return String(d._id);
+                                try {
+                                    const s = String(d);
+                                    if (/^[0-9a-fA-F]{24}$/.test(s))
+                                        return s;
+                                }
+                                catch (_a) { }
                             }
-                            catch (_a) { }
-                        }
-                        return undefined;
-                    };
-                    const computed = yield (0, computePricing_1.computeConsultPrice)({
-                        serviceCode,
-                        doctorId: resolveDoctorIdLocal(doctorId) ||
-                            resolveDoctorIdLocal(appointment.doctorId),
-                        durationMin,
-                        startAt,
-                        bhytEligible: (appointment.insuranceCoverage || 0) > 0,
-                        copayRate: (appointment.insuranceCoverage || 0) / 100,
-                    });
-                    const mapped = computed.items.map((it) => ({
-                        type: it.component === "facility"
-                            ? "consultation_fee"
-                            : "additional_services",
-                        description: it.description,
-                        amount: it.amount,
-                        insuranceAmount: it.insuranceAmount || 0,
-                        patientAmount: it.patientAmount || 0,
-                    }));
-                    createdInvoice = yield Invoice_1.default.create({
-                        appointmentId,
-                        type: "consultation",
-                        items: mapped,
-                        subtotal: computed.totals.total,
-                        insuranceCoverage: computed.totals.bhyt,
-                        patientAmount: computed.totals.patient,
-                        dueDate: new Date(Date.now() + payment_1.PAYMENT_HOLD_MS),
-                    });
-                }
-                if (createdInvoice) {
-                    // update appointment payment totals
-                    appointment.status = appointment_1.AppointmentStatus.AWAIT_PAYMENT;
-                    appointment.totalAmount = createdInvoice.subtotal;
-                    appointment.patientAmount = createdInvoice.patientAmount;
-                    appointment.paymentStatus = appointment_1.PaymentStatus.PENDING;
-                    yield appointment.save();
+                            return undefined;
+                        };
+                        const computed = yield (0, computePricing_1.computeConsultPrice)({
+                            serviceCode,
+                            doctorId: resolveDoctorIdLocal(doctorId) ||
+                                resolveDoctorIdLocal(appointment.doctorId),
+                            durationMin,
+                            startAt,
+                            bhytEligible: (appointment.insuranceCoverage || 0) > 0,
+                            copayRate: (appointment.insuranceCoverage || 0) / 100,
+                        });
+                        const mapped = computed.items.map((it) => ({
+                            type: it.component === "facility"
+                                ? "consultation_fee"
+                                : "additional_services",
+                            description: it.description,
+                            amount: it.amount,
+                            insuranceAmount: it.insuranceAmount || 0,
+                            patientAmount: it.patientAmount || 0,
+                        }));
+                        createdInvoice = yield Invoice_1.default.create({
+                            appointmentId,
+                            type: "consultation",
+                            items: mapped,
+                            subtotal: computed.totals.total,
+                            insuranceCoverage: computed.totals.bhyt,
+                            patientAmount: computed.totals.patient,
+                            dueDate: new Date(Date.now() + payment_1.PAYMENT_HOLD_MS),
+                        });
+                    }
+                    if (createdInvoice) {
+                        // update appointment payment totals
+                        appointment.status = appointment_1.AppointmentStatus.AWAIT_PAYMENT;
+                        appointment.totalAmount = createdInvoice.subtotal;
+                        appointment.patientAmount = createdInvoice.patientAmount;
+                        appointment.paymentStatus = appointment_1.PaymentStatus.PENDING;
+                        yield appointment.save();
+                    }
                 }
             }
         }
@@ -202,11 +233,19 @@ exports.approveAppointment = approveAppointment;
 const requestReschedule = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { appointmentId } = req.params;
-        const { doctorId, newScheduleId, reason, notes } = req.body;
+        const { doctorId, newScheduleId, proposedScheduleId, reason, notes } = req.body;
+        // Allow doctor to request reschedule for booked/confirmed/paid/await_payment
         const appointment = yield Appointment_1.default.findOne({
             _id: appointmentId,
             doctorId,
-            status: appointment_1.AppointmentStatus.BOOKED,
+            status: {
+                $in: [
+                    appointment_1.AppointmentStatus.BOOKED,
+                    appointment_1.AppointmentStatus.CONFIRMED,
+                    appointment_1.AppointmentStatus.PAID,
+                    appointment_1.AppointmentStatus.AWAIT_PAYMENT,
+                ],
+            },
         });
         if (!appointment) {
             return res
@@ -214,8 +253,9 @@ const requestReschedule = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 .json({ message: "Không tìm thấy lịch hẹn chờ xác nhận" });
         }
         // Check if new schedule exists and is available
+        const scheduleIdToCheck = newScheduleId || proposedScheduleId;
         const newSchedule = yield DoctorSchedule_1.default.findOne({
-            _id: newScheduleId,
+            _id: scheduleIdToCheck,
             doctorId,
             status: "accepted",
             isBooked: false,
@@ -230,7 +270,8 @@ const requestReschedule = (req, res) => __awaiter(void 0, void 0, void 0, functi
         appointment.doctorDecision = "reschedule";
         appointment.rescheduleReason = reason;
         appointment.doctorNotes = notes;
-        appointment.newScheduleId = newScheduleId;
+        // Use the validated schedule id (could be passed as newScheduleId or proposedScheduleId)
+        appointment.newScheduleId = scheduleIdToCheck;
         yield appointment.save();
         // Notify patient about reschedule request
         try {
@@ -347,13 +388,23 @@ const acceptReschedule = (req, res) => __awaiter(void 0, void 0, void 0, functio
             newSchedule.isBooked = true;
             yield newSchedule.save();
         }
-        // Update appointment
+        // Update appointment: switch to new schedule and set status.
         appointment.scheduleId = appointment.newScheduleId;
         appointment.appointmentDate =
             (newSchedule === null || newSchedule === void 0 ? void 0 : newSchedule.date) || appointment.appointmentDate;
         appointment.appointmentTime =
             (newSchedule === null || newSchedule === void 0 ? void 0 : newSchedule.startTime) || appointment.appointmentTime;
-        appointment.status = appointment_1.AppointmentStatus.BOOKED; // Back to booked, waiting for approval
+        // If patient already paid or authorized the payment, keep the appointment
+        // confirmed so they are not asked to pay again. Otherwise revert to BOOKED
+        // so the doctor can re-approve and (if needed) an invoice can be created.
+        if (appointment.paymentStatus === appointment_1.PaymentStatus.CAPTURED ||
+            appointment.paymentStatus === appointment_1.PaymentStatus.AUTHORIZED) {
+            appointment.status = appointment_1.AppointmentStatus.CONFIRMED;
+            appointment.confirmedAt = appointment.confirmedAt || new Date();
+        }
+        else {
+            appointment.status = appointment_1.AppointmentStatus.BOOKED; // Back to booked, waiting for approval
+        }
         appointment.doctorDecision = undefined;
         appointment.rescheduleReason = undefined;
         appointment.newScheduleId = undefined;
@@ -394,7 +445,7 @@ const startConsultation = (req, res) => __awaiter(void 0, void 0, void 0, functi
             _id: appointmentId,
             doctorId,
             status: appointment_1.AppointmentStatus.CONFIRMED,
-        });
+        }).populate("patientId");
         if (!appointment) {
             return res
                 .status(404)
@@ -405,8 +456,9 @@ const startConsultation = (req, res) => __awaiter(void 0, void 0, void 0, functi
         appointment.startedAt = new Date();
         yield appointment.save();
         // Create Encounter record linked to this appointment
+        let encounter = null;
         try {
-            const enc = yield Encounter_1.default.create({
+            encounter = yield Encounter_1.default.create({
                 appointmentId: appointment._id,
                 patientId: appointment.patientId,
                 doctorId: appointment.doctorId,
@@ -414,15 +466,65 @@ const startConsultation = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 startedAt: new Date(),
             });
             // attach encounter id to response for client convenience
-            appointment._encounter = enc;
+            appointment._encounter = encounter;
         }
         catch (err) {
             console.error("Failed to create Encounter for appointment", appointmentId, err);
             // don't fail the startConsultation flow if encounter creation fails
         }
+        // Automatically create medical record when starting consultation
+        let medicalRecord = null;
+        try {
+            // Check if medical record already exists for this appointment
+            const existingRecord = yield MedicalRecord_1.default.findOne({ appointmentId });
+            if (!existingRecord) {
+                const patient = appointment.patientId;
+                medicalRecord = yield MedicalRecord_1.default.create({
+                    appointmentId: appointment._id,
+                    patient: patient._id,
+                    doctor: doctorId,
+                    appointmentCode: `APT-${Date.now()}`,
+                    consultationType: appointment.mode || "offline",
+                    patientInfo: {
+                        fullName: patient.name || patient.fullName || "",
+                        birthYear: patient.birthYear,
+                        gender: patient.gender,
+                        insuranceNumber: patient.insuranceNumber,
+                        emergencyContactName: patient.emergencyContactName,
+                        emergencyContactPhone: patient.emergencyContactPhone,
+                    },
+                    reasonForVisit: "Khám tổng quát",
+                    chiefComplaint: appointment.symptoms || "Chưa có triệu chứng cụ thể",
+                    preliminaryDiagnosis: "Chưa có chẩn đoán sơ bộ",
+                    diagnosis: "Chưa có chẩn đoán cuối cùng",
+                    treatment: "Chưa có phương pháp điều trị",
+                    status: "in_progress",
+                });
+                console.log(`Created medical record ${medicalRecord._id} for appointment ${appointmentId}`);
+            }
+            else {
+                medicalRecord = existingRecord;
+                // Update status to in_progress if it was draft
+                if (existingRecord.status === "draft") {
+                    existingRecord.status = "in_progress";
+                    yield existingRecord.save();
+                }
+                console.log(`Using existing medical record ${existingRecord._id} for appointment ${appointmentId}`);
+            }
+        }
+        catch (err) {
+            console.error("Failed to create/update medical record for appointment", appointmentId, err);
+            // don't fail the startConsultation flow if medical record creation fails
+        }
         res.json({
             message: "Đã bắt đầu khám",
             appointment,
+            medicalRecord: medicalRecord
+                ? {
+                    id: medicalRecord._id,
+                    status: medicalRecord.status,
+                }
+                : null,
         });
         try {
             yield (0, notificationService_1.createNotification)({

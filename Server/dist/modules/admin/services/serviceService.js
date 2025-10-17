@@ -58,7 +58,7 @@ class ServiceService {
         return __awaiter(this, void 0, void 0, function* () {
             return yield Service_1.default.find({
                 $text: { $search: query },
-                isActive: true
+                isActive: true,
             }).sort({ score: { $meta: "textScore" } });
         });
     }

@@ -22,9 +22,15 @@ export interface IInvoice extends Document {
   subtotal: number;
   insuranceCoverage: number;
   patientAmount: number;
+  payosOrderId?: string;
+  paymentLinkId?: string;
+  raw?: any;
   status: PaymentStatus;
   dueDate?: Date;
   paidAt?: Date;
+  // VNPay fields
+  vnpayTxnRef?: string;
+  vnpayTransactionNo?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -102,6 +108,27 @@ const InvoiceSchema = new Schema<IInvoice>(
     },
     dueDate: Date,
     paidAt: Date,
+    // VNPay fields
+    vnpayTxnRef: {
+      type: String,
+      index: true,
+    },
+    vnpayTransactionNo: {
+      type: String,
+    },
+    // PayOS order id (if an order was created with PayOS)
+    payosOrderId: {
+      type: String,
+      index: true,
+    },
+    paymentLinkId: {
+      type: String,
+      index: true,
+    },
+    // Raw provider data (useful for debugging and rehydration)
+    raw: {
+      type: Schema.Types.Mixed,
+    },
   },
   { timestamps: true }
 );

@@ -77,6 +77,11 @@ const getDoctorAppointments = (req, res) => __awaiter(void 0, void 0, void 0, fu
             path: "scheduleId",
             model: "DoctorSchedule",
         })
+            // include the proposed new schedule so clients can display doctor's suggestion
+            .populate({
+            path: "newScheduleId",
+            model: "DoctorSchedule",
+        })
             .sort({ createdAt: -1 })
             .lean();
         console.log("Found appointments with populate:", list.length);
@@ -95,14 +100,15 @@ exports.getDoctorAppointments = getDoctorAppointments;
 // Doctor: Cập nhật trạng thái lịch hẹn
 const updateAppointmentStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
-        const { id } = req.params;
+        // support both :id and :appointmentId route param names for robustness
+        const appointmentId = req.params.appointmentId || req.params.id || "";
         const { status, doctorId } = req.body;
         // Validate required fields
-        if (!id || !status || !doctorId) {
+        if (!appointmentId || !status || !doctorId) {
             res.status(400).json({
                 message: "Thiếu thông tin bắt buộc",
                 details: {
-                    id: !id ? "Thiếu ID lịch hẹn" : null,
+                    appointmentId: !appointmentId ? "Thiếu ID lịch hẹn" : null,
                     status: !status ? "Thiếu trạng thái mới" : null,
                     doctorId: !doctorId ? "Thiếu ID bác sĩ" : null,
                 },
@@ -117,7 +123,10 @@ const updateAppointmentStatus = (req, res) => __awaiter(void 0, void 0, void 0, 
             });
             return;
         }
-        const appointment = yield Appointment_1.default.findOne({ _id: id, doctorId });
+        const appointment = yield Appointment_1.default.findOne({
+            _id: appointmentId,
+            doctorId,
+        });
         if (!appointment) {
             res.status(404).json({ message: "Không tìm thấy lịch hẹn" });
             return;
@@ -341,24 +350,35 @@ const getAppointmentsByDate = (req, res) => __awaiter(void 0, void 0, void 0, fu
             res.status(400).json({ message: "Thiếu doctorId hoặc date" });
             return;
         }
+        // Tìm tất cả appointments của doctor
         const appointments = yield Appointment_1.default.find({ doctorId })
-            .populate("patientId", "name email phone")
+            .populate("patientId", "name email phone avatar")
             .populate("scheduleId")
-            .populate({
-            path: "scheduleId",
-            match: { date: date },
-        })
-            .lean()
-            .then((appointments) => appointments.filter((apt) => apt.scheduleId))
-            .then((appointments) => appointments.sort((a, b) => {
+            .lean();
+        // Filter appointments theo ngày
+        const filteredAppointments = appointments.filter((apt) => {
+            if (!apt.scheduleId) {
+                return false;
+            }
+            const schedule = apt.scheduleId;
+            const scheduleDate = schedule === null || schedule === void 0 ? void 0 : schedule.date;
+            return scheduleDate === date;
+        });
+        // Sort theo thời gian
+        const sortedAppointments = filteredAppointments.sort((a, b) => {
             var _a, _b;
             const aTime = ((_a = a.scheduleId) === null || _a === void 0 ? void 0 : _a.startTime) || "";
             const bTime = ((_b = b.scheduleId) === null || _b === void 0 ? void 0 : _b.startTime) || "";
             return aTime.localeCompare(bTime);
-        }));
-        res.json(appointments);
+        });
+        res.json({
+            success: true,
+            data: sortedAppointments,
+            count: sortedAppointments.length
+        });
     }
     catch (error) {
+        console.error("Error in getAppointmentsByDate:", error);
         res.status(500).json({ message: "Lỗi lấy lịch hẹn theo ngày", error });
     }
 });

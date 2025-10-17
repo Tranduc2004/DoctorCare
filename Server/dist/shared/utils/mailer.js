@@ -30,6 +30,15 @@ function createTransport() {
 function verifyEmailTransport() {
     return __awaiter(this, void 0, void 0, function* () {
         console.log("Đang khởi tạo transporter email...");
+        console.log("Working directory:", process.cwd());
+        console.log("NODE_ENV:", process.env.NODE_ENV);
+        console.log("All env EMAIL vars:", {
+            EMAIL_USER: process.env.EMAIL_USER,
+            EMAIL_PASS: process.env.EMAIL_PASS ? "***hidden***" : undefined,
+            MAIL_FROM: process.env.MAIL_FROM,
+            MAIL_HOST: process.env.MAIL_HOST,
+            MAIL_PORT: process.env.MAIL_PORT,
+        });
         console.log("EMAIL_USER:", EMAIL_USER || "(trống)");
         console.log("EMAIL_PASS:", EMAIL_PASS ? "Đã cấu hình" : "Chưa cấu hình");
         if (!EMAIL_USER || !EMAIL_PASS) {

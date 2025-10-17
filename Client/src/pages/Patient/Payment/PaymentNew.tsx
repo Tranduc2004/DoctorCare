@@ -2,6 +2,64 @@ import React, { useEffect, useState } from "react";
 import { useParams, useLocation } from "react-router-dom";
 import { usePayment } from "../../../contexts/PaymentContext";
 import { paymentApi } from "../../../api/paymentApi";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
+import { CheckCircle } from "lucide-react";
+
+// Success Animation Component with fallback
+const SuccessAnimation: React.FC = () => {
+  const [hasError, setHasError] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const handleError = () => {
+    // animation failed — show fallback
+    setHasError(true);
+    setIsLoading(false);
+  };
+
+  const handleLoad = () => {
+    setIsLoading(false);
+  };
+
+  useEffect(() => {}, []);
+
+  if (hasError) {
+    // Fallback to Lucide icon with CSS animation
+    return (
+      <div className="w-48 h-48 flex items-center justify-center">
+        <div
+          className="text-green-500"
+          style={{
+            animation: "pulse 2s ease-in-out infinite",
+          }}
+        >
+          <CheckCircle size={120} />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-48 h-48">
+      {isLoading && (
+        <div className="w-full h-full flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+        </div>
+      )}
+      <DotLottieReact
+        src="https://lottie.host/69533610-ec9e-4652-a9e0-eec5b360f37b/YNNU0BrBD8.lottie"
+        loop
+        autoplay
+        onError={handleError}
+        onLoad={handleLoad}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: isLoading ? "none" : "block",
+        }}
+      />
+    </div>
+  );
+};
 
 const PaymentPage: React.FC = () => {
   const { appointmentId } = useParams<{ appointmentId: string }>();
@@ -33,6 +91,14 @@ const PaymentPage: React.FC = () => {
     createdAt?: string;
   } | null;
   const [receiptPayment, setReceiptPayment] = useState<PaymentRecord>(null);
+  const [showSuccess, setShowSuccess] = useState<boolean>(false);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+
+  // Debug function to test modal (no console logs)
+  const testModal = () => setShowSuccess(true);
+
+  // Debug useEffect to watch showSuccess changes
+  useEffect(() => {}, [showSuccess]);
 
   useEffect(() => {
     let mounted = true;
@@ -99,9 +165,14 @@ const PaymentPage: React.FC = () => {
 
   const handlePayment = async (invoiceId: string) => {
     try {
+      setIsProcessing(true);
       await processPayment(invoiceId, "card", appointmentId); // include appointmentId so server can validate
+      setShowSuccess(true);
+      // Không điều hướng tự động nữa. Người dùng sẽ bấm nút OK trong modal để chuyển qua phiếu khám.
     } catch {
-      // Error already handled by context
+      // Error already handled by context, keep silent in console to avoid noisy logs
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -145,6 +216,36 @@ const PaymentPage: React.FC = () => {
 
       return (
         <div className="min-h-screen bg-gray-50 py-8">
+          {showSuccess && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+              <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+                <div className="flex justify-center mb-4">
+                  <SuccessAnimation />
+                </div>
+                <h2 className="text-xl font-semibold text-green-700">
+                  Thanh toán thành công
+                </h2>
+                <p className="mt-2 text-gray-600">
+                  Cảm ơn bạn đã hoàn tất thanh toán. Thông tin hóa đơn đã được
+                  cập nhật.
+                </p>
+                <button
+                  onClick={() => {
+                    try {
+                      window.location.href = appointmentId
+                        ? `/appointments/${appointmentId}/slip`
+                        : "/appointments";
+                    } catch {
+                      // ignore
+                    }
+                  }}
+                  className="mt-4 inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+          )}
           <div className="max-w-3xl mx-auto">
             <div className="bg-white rounded-lg shadow-sm p-6">
               <h3 className="text-lg font-semibold">Biên lai thanh toán</h3>
@@ -186,7 +287,57 @@ const PaymentPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Processing overlay shown during payment actions (VNPay, card, etc.) */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-56 h-56 flex items-center justify-center">
+            <SuccessAnimation />
+          </div>
+        </div>
+      )}
+      {/* Success Modal */}
+      {showSuccess && (
+        <>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+              <div className="flex justify-center mb-4">
+                <SuccessAnimation />
+              </div>
+              <h2 className="text-xl font-semibold text-green-700">
+                Thanh toán thành công
+              </h2>
+              <p className="mt-2 text-gray-600">
+                Cảm ơn bạn đã hoàn tất thanh toán. Thông tin hóa đơn đã được cập
+                nhật.
+              </p>
+              <button
+                onClick={() => {
+                  try {
+                    window.location.href = appointmentId
+                      ? `/appointments/${appointmentId}/slip`
+                      : "/appointments";
+                  } catch {
+                    // ignore
+                  }
+                }}
+                className="mt-4 inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </>
+      )}
       <div className="max-w-3xl mx-auto">
+        {/* Debug Button - Remove in production */}
+        <div className="mb-4">
+          <button
+            onClick={testModal}
+            className="bg-red-500 text-white px-4 py-2 rounded"
+          >
+            Test Success Modal
+          </button>
+        </div>
         {/* Invoice Details */}
         <div className="bg-white rounded-lg shadow-sm p-6">
           <div className="flex justify-between items-start mb-4">

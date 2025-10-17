@@ -1,470 +1,367 @@
 import React, { useState, useEffect, useCallback } from "react";
 import {
-  Search,
   FileText,
+  Search,
+  Filter,
   Calendar,
   User,
-  Phone,
-  Mail,
-  Clock,
   Eye,
-  Filter,
-  ChevronRight,
+  Edit,
+  CheckCircle,
+  AlertCircle,
   Plus,
-  Edit3,
-  X,
-  RefreshCw,
 } from "lucide-react";
+import MedicalRecordForm from "../../../components/Doctor/MedicalRecord/MedicalRecordForm";
 import {
-  getMedicalRecordByAppointment,
   MedicalRecord,
+  getDoctorMedicalRecords,
 } from "../../../api/medicalRecordApi";
-import { getAppointmentsByDoctor } from "../../../api/appointmentApi";
+import {
+  getDoctorAppointments,
+  DoctorAppointment,
+} from "../../../api/doctorApi";
 import { useAuth } from "../../../contexts/AuthContext";
-import MedicalRecordForm from "../../../components/MedicalRecordForm";
-
-// Define Appointment interface similar to Appointments.tsx
-interface Appointment {
-  _id: string;
-  patientId: {
-    _id: string;
-    name: string;
-    email: string;
-    phone: string;
-    avatar?: string;
-  };
-  patientInfo?: {
-    name: string;
-    phone: string;
-    email: string;
-  };
-  appointmentTime: string;
-  status: string;
-  symptoms: string;
-  notes?: string;
-  doctorId: string;
-  createdAt: string;
-  updatedAt: string;
-}
 
 const MedicalRecords: React.FC = () => {
   const { user } = useAuth();
-  const [appointments, setAppointments] = useState<Appointment[]>([]);
-  const [filteredAppointments, setFilteredAppointments] = useState<
-    Appointment[]
-  >([]);
+  const [medicalRecords, setMedicalRecords] = useState<MedicalRecord[]>([]);
+  const [appointments, setAppointments] = useState<DoctorAppointment[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [medicalRecordModalOpen, setMedicalRecordModalOpen] = useState(false);
-  const [selectedAppointment, setSelectedAppointment] =
-    useState<Appointment | null>(null);
-  const [appointmentsWithMedicalRecord, setAppointmentsWithMedicalRecord] =
-    useState<Set<string>>(new Set());
+  const [selectedRecord, setSelectedRecord] = useState<string | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
-  // Get doctor ID from auth context
-  const doctorId = user?._id || "";
-
-  useEffect(() => {
-    if (doctorId) {
-      fetchAppointments();
-    }
-  }, [doctorId]);
-
-  useEffect(() => {
-    filterAppointments();
-  }, [searchTerm, statusFilter, appointments]);
-
-  useEffect(() => {
-    if (appointments.length > 0) {
-      loadMedicalRecordStatus();
-    }
-  }, [appointments]);
-
-  const fetchAppointments = async () => {
-    if (!doctorId) {
-      setLoading(false);
-      return;
-    }
-
+  // Load appointments and medical records
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      const data = await getAppointmentsByDoctor(doctorId);
-      // Filter only completed appointments for medical records
-      const completedAppointments = data.filter(
-        (appointment: Appointment) => appointment.status === "completed"
+      const doctorId = user?._id;
+      if (!doctorId) return;
+
+      // Load appointments with status that can have medical records
+      const appointmentsData = await getDoctorAppointments(doctorId);
+      const relevantAppointments = appointmentsData.filter((apt) =>
+        [
+          "completed",
+          "confirmed",
+          "paid",
+          "prescription_issued",
+          "final",
+          "closed",
+        ].includes(apt.status)
       );
-      setAppointments(completedAppointments);
+      setAppointments(relevantAppointments);
+
+      // Load medical records
+      try {
+        const recordsData = await getDoctorMedicalRecords(doctorId);
+        setMedicalRecords(recordsData || []);
+      } catch (error) {
+        console.error("Error loading medical records:", error);
+        setMedicalRecords([]);
+      }
     } catch (error) {
-      console.error("Error fetching appointments:", error);
+      console.error("Error loading data:", error);
     } finally {
       setLoading(false);
     }
-  };
+  }, [user?._id]);
 
-  const checkMedicalRecordExists = useCallback(
-    async (appointmentId: string): Promise<boolean> => {
-      try {
-        const response = await getMedicalRecordByAppointment(appointmentId);
-        return !!response;
-      } catch (error) {
-        return false;
-      }
-    },
-    []
+  useEffect(() => {
+    if (user?._id) {
+      loadData();
+    }
+  }, [user?._id, loadData]);
+
+  // Filter records based on search and status
+  const filteredRecords = medicalRecords.filter((record) => {
+    const matchesSearch =
+      record.patientInfo?.fullName
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase()) ||
+      record.appointmentId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      record.diagnosis?.primaryDiagnosis
+        ?.toLowerCase()
+        .includes(searchTerm.toLowerCase());
+
+    const matchesStatus =
+      statusFilter === "all" || record.status === statusFilter;
+
+    return matchesSearch && matchesStatus;
+  });
+
+  // Get appointments that don't have medical records yet
+  const appointmentsWithoutRecords = appointments.filter(
+    (apt) => !medicalRecords.some((record) => record.appointmentId === apt._id)
   );
 
-  const loadMedicalRecordStatus = useCallback(async () => {
-    const recordSet = new Set<string>();
-    for (const appointment of appointments) {
-      const hasRecord = await checkMedicalRecordExists(appointment._id);
-      if (hasRecord) {
-        recordSet.add(appointment._id);
+  const handleViewRecord = (recordId: string) => {
+    setSelectedRecord(recordId);
+    setIsFormOpen(true);
+  };
+
+  const handleCreateRecord = (appointmentId: string) => {
+    setSelectedRecord(appointmentId);
+    setIsFormOpen(true);
+  };
+
+  const handleCloseForm = () => {
+    setIsFormOpen(false);
+    setSelectedRecord(null);
+    loadData(); // Reload data after form closes
+  };
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<
+      string,
+      {
+        color: string;
+        label: string;
+        icon: React.ComponentType<{ className?: string }>;
       }
-    }
-    setAppointmentsWithMedicalRecord(recordSet);
-  }, [appointments, checkMedicalRecordExists]);
+    > = {
+      draft: {
+        color: "bg-yellow-100 text-yellow-800",
+        label: "Nháp",
+        icon: Edit,
+      },
+      completed: {
+        color: "bg-green-100 text-green-800",
+        label: "Hoàn thành",
+        icon: CheckCircle,
+      },
+      prescription_issued: {
+        color: "bg-blue-100 text-blue-800",
+        label: "Đã phát đơn",
+        icon: FileText,
+      },
+    };
 
-  const filterAppointments = () => {
-    let filtered = appointments;
+    const config = statusConfig[status] || {
+      color: "bg-gray-100 text-gray-800",
+      label: status,
+      icon: AlertCircle,
+    };
+    const Icon = config.icon;
 
-    // Filter by search term
-    if (searchTerm) {
-      filtered = filtered.filter((appointment) => {
-        const patientName =
-          appointment.patientInfo?.name || appointment.patientId.name;
-        const patientEmail =
-          appointment.patientInfo?.email || appointment.patientId.email;
-        const patientPhone =
-          appointment.patientInfo?.phone || appointment.patientId.phone;
-
-        return (
-          patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          patientEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          patientPhone.includes(searchTerm) ||
-          appointment.symptoms.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      });
-    }
-
-    // Filter by medical record status
-    if (statusFilter === "has_record") {
-      filtered = filtered.filter((appointment) =>
-        appointmentsWithMedicalRecord.has(appointment._id)
-      );
-    } else if (statusFilter === "no_record") {
-      filtered = filtered.filter(
-        (appointment) => !appointmentsWithMedicalRecord.has(appointment._id)
-      );
-    }
-
-    setFilteredAppointments(filtered);
+    return (
+      <span
+        className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${config.color}`}
+      >
+        <Icon className="w-3 h-3 mr-1" />
+        {config.label}
+      </span>
+    );
   };
 
-  const handleOpenMedicalRecord = (appointment: Appointment) => {
-    setSelectedAppointment(appointment);
-    setMedicalRecordModalOpen(true);
-  };
-
-  const handleCloseMedicalRecord = () => {
-    setMedicalRecordModalOpen(false);
-    setSelectedAppointment(null);
-  };
-
-  const handleSaveMedicalRecord = (record: MedicalRecord) => {
-    // Add appointment to the set of appointments with medical records
-    if (selectedAppointment) {
-      setAppointmentsWithMedicalRecord(
-        (prev) => new Set([...prev, selectedAppointment._id])
-      );
-    }
-    handleCloseMedicalRecord();
-  };
-
-  const getMedicalRecordButtonType = (appointment: Appointment) => {
-    const hasRecord = appointmentsWithMedicalRecord.has(appointment._id);
-    return hasRecord ? "view" : "create";
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString("vi-VN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-
-  const getRecordStatusBadge = (hasRecord: boolean) => {
-    if (hasRecord) {
-      return (
-        <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
-          Đã có hồ sơ
-        </span>
-      );
-    } else {
-      return (
-        <span className="px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-800">
-          Chưa có hồ sơ
-        </span>
-      );
-    }
-  };
-
-  /** UI */
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-emerald-50">
-      {/* Top bar */}
-      <header className="border-b border-slate-200 bg-gradient-to-r from-blue-500 to-teal-400">
-        <div className="mx-auto max-w-7xl px-6 py-5 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Quản lý Hồ sơ Bệnh án
-            </h1>
-            <p className="text-white/90">
-              Danh sách lịch khám đã hoàn thành và quản lý hồ sơ bệnh án
-            </p>
-          </div>
-          <button
-            onClick={fetchAppointments}
-            className="inline-flex items-center gap-2 rounded-lg border border-teal-300 bg-gradient-to-r from-teal-500 to-blue-500 px-4 py-2 text-sm font-medium text-white hover:from-teal-600 hover:to-blue-600 transition-all duration-200 shadow-md hover:shadow-lg"
-          >
-            <RefreshCw className="h-4 w-4" /> Tải lại
-          </button>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600">Đang tải hồ sơ bệnh án...</p>
         </div>
-      </header>
-      <main className="mx-auto max-w-7xl p-6">
-        {/* Filters */}
-        <section className="mb-6 rounded-xl border border-teal-200 bg-white p-5 shadow-lg backdrop-blur-sm">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="relative">
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                <Search className="mr-1 inline h-4 w-4 text-teal-500" />
-                Tìm kiếm (tên/sđt/email/triệu chứng)
-              </label>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-3">
+                <FileText className="h-8 w-8 text-blue-600" />
+                Hồ sơ bệnh án
+              </h1>
+              <p className="text-gray-600 mt-1">
+                Quản lý hồ sơ bệnh án từ các lịch hẹn đã hoàn thành
+              </p>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-gray-600">
+              <span>Tổng số: {medicalRecords.length} hồ sơ</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+          <div className="flex flex-col md:flex-row gap-4">
+            <div className="flex-1 relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
               <input
+                type="text"
+                placeholder="Tìm kiếm theo tên bệnh nhân, mã lịch hẹn, chẩn đoán..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="VD: Nguyễn A, 0909..., đau đầu"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all duration-200"
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
             </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                <Filter className="mr-1 inline h-4 w-4 text-teal-500" />
-                Trạng thái hồ sơ
-              </label>
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-400" />
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 focus:border-teal-500 focus:outline-none focus:ring-4 focus:ring-teal-100 transition-all duration-200"
+                className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="all">Tất cả trạng thái</option>
-                <option value="has_record">Đã có hồ sơ</option>
-                <option value="no_record">Chưa có hồ sơ</option>
+                <option value="draft">Nháp</option>
+                <option value="completed">Hoàn thành</option>
+                <option value="prescription_issued">Đã phát đơn</option>
               </select>
             </div>
           </div>
+        </div>
 
-          {(statusFilter !== "all" || searchTerm) && (
-            <div className="mt-4 flex items-center gap-2 border-t border-teal-200 pt-4">
-              <Filter className="h-4 w-4 text-teal-600" />
-              <span className="text-sm text-gray-600">Đang lọc:</span>
-              {searchTerm && (
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-sm text-gray-700 border border-gray-200">
-                  "{searchTerm}"
-                </span>
-              )}
-              {statusFilter !== "all" && (
-                <span className="rounded-full bg-teal-100 px-3 py-1 text-sm text-teal-700 border border-teal-200">
-                  {statusFilter === "has_record" ? "Đã có hồ sơ" : "Chưa có hồ sơ"}
-                </span>
-              )}
-              <button
-                onClick={() => {
-                  setSearchTerm("");
-                  setStatusFilter("all");
-                }}
-                className="ml-auto text-sm text-gray-500 hover:text-gray-700 underline"
-              >
-                Xóa bộ lọc
-              </button>
+        {/* Appointments without medical records */}
+        {appointmentsWithoutRecords.length > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-6 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+              <Plus className="h-5 w-5 text-green-600" />
+              Lịch hẹn cần tạo hồ sơ bệnh án (
+              {appointmentsWithoutRecords.length})
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {appointmentsWithoutRecords.map((appointment) => (
+                <div
+                  key={appointment._id}
+                  className="border border-yellow-200 bg-yellow-50 rounded-lg p-4 hover:bg-yellow-100 transition-colors"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="font-medium text-gray-900">
+                        {appointment.patientId.name}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {new Date(
+                          appointment.scheduleId.date
+                        ).toLocaleDateString("vi-VN")}{" "}
+                        - {appointment.scheduleId.startTime}
+                      </p>
+                      <p className="text-sm text-gray-500 mt-1">
+                        {appointment.symptoms || "Không có triệu chứng"}
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => handleCreateRecord(appointment._id)}
+                      className="ml-2 p-2 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                      title="Tạo hồ sơ bệnh án"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
-        </section>
-
-        {loading && (
-          <div className="flex justify-center items-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-teal-600"></div>
           </div>
         )}
 
-        {/* Appointment List */}
-        {filteredAppointments.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="mx-auto h-24 w-24 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-              <FileText className="h-12 w-12 text-gray-400" />
-            </div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">Không có lịch khám nào</h3>
-            <p className="text-gray-500">Không có lịch khám nào phù hợp với bộ lọc hiện tại</p>
+        {/* Medical Records List */}
+        <div className="bg-white rounded-2xl shadow-sm">
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900">
+              Danh sách hồ sơ bệnh án ({filteredRecords.length})
+            </h2>
           </div>
-        ) : (
-          <div className="space-y-4">
-            {filteredAppointments.map((appointment) => {
-              const hasRecord = appointmentsWithMedicalRecord.has(
-                appointment._id
-              );
-              const buttonType = getMedicalRecordButtonType(appointment);
-              const patientName =
-                appointment.patientInfo?.name || appointment.patientId.name;
-              const patientEmail =
-                appointment.patientInfo?.email || appointment.patientId.email;
-              const patientPhone =
-                appointment.patientInfo?.phone || appointment.patientId.phone;
 
-              return (
+          {filteredRecords.length === 0 ? (
+            <div className="p-12 text-center">
+              <FileText className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Không có hồ sơ bệnh án
+              </h3>
+              <p className="text-gray-600">
+                {searchTerm || statusFilter !== "all"
+                  ? "Không tìm thấy hồ sơ phù hợp với bộ lọc"
+                  : "Chưa có hồ sơ bệnh án nào"}
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-200">
+              {filteredRecords.map((record) => (
                 <div
-                  key={appointment._id}
-                  className="overflow-hidden rounded-xl border border-teal-200 bg-white shadow-lg transition-all duration-200 hover:shadow-xl hover:border-teal-300"
+                  key={record._id}
+                  className="p-6 hover:bg-gray-50 transition-colors"
                 >
-                  <div className="p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="mb-4 flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-r from-teal-500 to-blue-500">
-                            {appointment.patientId.avatar ? (
-                              <img
-                                src={appointment.patientId.avatar}
-                                alt={patientName}
-                                className="w-10 h-10 rounded-full object-cover"
-                              />
-                            ) : (
-                              <User className="h-5 w-5 text-white" />
-                            )}
-                          </div>
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-900">
-                              {patientName}
-                            </h3>
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
-                                Đã hoàn thành
-                              </span>
-                              {getRecordStatusBadge(hasRecord)}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Calendar className="h-4 w-4 text-teal-500" />
-                            <span className="font-medium">Ngày khám:</span>
-                            <span>{formatDate(appointment.appointmentTime)}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Phone className="h-4 w-4 text-teal-500" />
-                            <span className="font-medium">SĐT:</span>
-                            <span>{patientPhone}</span>
-                          </div>
-                          <div className="flex items-center gap-2 text-sm text-gray-600">
-                            <Mail className="h-4 w-4 text-teal-500" />
-                            <span className="font-medium">Email:</span>
-                            <span className="truncate">{patientEmail}</span>
-                          </div>
-                        </div>
-
-                        {appointment.symptoms && (
-                          <div className="mt-4 rounded-lg border border-teal-100 bg-teal-50 p-3">
-                            <div className="flex items-start gap-2">
-                              <FileText className="mt-0.5 h-4 w-4 text-teal-600" />
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-teal-800">Triệu chứng:</p>
-                                <p className="mt-1 text-sm text-teal-700">{appointment.symptoms}</p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        {appointment.notes && (
-                          <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                            <div className="flex items-start gap-2">
-                              <FileText className="mt-0.5 h-4 w-4 text-gray-600" />
-                              <div className="flex-1">
-                                <p className="text-sm font-medium text-gray-800">Ghi chú:</p>
-                                <p className="mt-1 text-sm text-gray-700">{appointment.notes}</p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
+                  <div className="flex items-center justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3 mb-2">
+                        <h3 className="text-lg font-medium text-gray-900">
+                          {record.patientInfo?.fullName || "Không rõ tên"}
+                        </h3>
+                        {getStatusBadge(record.status)}
                       </div>
 
-                      {/* Action Button */}
-                      <div className="ml-6">
-                        <button
-                          onClick={() => handleOpenMedicalRecord(appointment)}
-                          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200 hover:shadow-lg ${
-                            buttonType === "view"
-                              ? "bg-gradient-to-r from-blue-500 to-teal-500 text-white hover:from-blue-600 hover:to-teal-600"
-                              : "bg-gradient-to-r from-green-500 to-emerald-500 text-white hover:from-green-600 hover:to-emerald-600"
-                          }`}
-                        >
-                          {buttonType === "view" ? (
-                            <>
-                              <Eye className="h-4 w-4" />
-                              Xem hồ sơ
-                            </>
-                          ) : (
-                            <>
-                              <Plus className="h-4 w-4" />
-                              Tạo hồ sơ
-                            </>
-                          )}
-                          <ChevronRight className="h-4 w-4" />
-                        </button>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm text-gray-600">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4" />
+                          <span>
+                            {record.createdAt
+                              ? new Date(record.createdAt).toLocaleDateString(
+                                  "vi-VN"
+                                )
+                              : "Không rõ ngày"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          <span>
+                            Tuổi:{" "}
+                            {record.patientInfo?.birthYear
+                              ? new Date().getFullYear() -
+                                record.patientInfo.birthYear
+                              : "N/A"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-4 w-4" />
+                          <span>
+                            {record.diagnosis?.primaryDiagnosis ||
+                              record.preliminaryDiagnosis ||
+                              "Chưa có chẩn đoán"}
+                          </span>
+                        </div>
                       </div>
+
+                      {record.symptoms?.chiefComplaint && (
+                        <p className="text-sm text-gray-600 mt-2">
+                          <strong>Triệu chứng:</strong>{" "}
+                          {record.symptoms.chiefComplaint}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="mt-6 flex items-center justify-between border-t border-gray-200 pt-4">
-                      <div className="text-xs text-gray-500">
-                        Mã lịch khám: {appointment._id.slice(-8)}
-                      </div>
+                    <div className="flex items-center gap-2 ml-4">
+                      <button
+                        onClick={() => handleViewRecord(record.appointmentId)}
+                        className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg transition-colors"
+                        title="Xem/Chỉnh sửa hồ sơ"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      {/* Medical Record Modal */}
-      {medicalRecordModalOpen && selectedAppointment && (
-        <div className="fixed inset-0 bg-white/80 bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-            <div className="flex items-center justify-between p-6 border-b">
-              <h2 className="text-xl font-semibold text-gray-900">
-                Hồ sơ bệnh án -{" "}
-                {selectedAppointment.patientInfo?.name ||
-                  selectedAppointment.patientId.name}
-              </h2>
-              <button
-                onClick={handleCloseMedicalRecord}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
+              ))}
             </div>
-            <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
-              <MedicalRecordForm
-                appointmentId={selectedAppointment._id}
-                isOpen={medicalRecordModalOpen}
-                onClose={handleCloseMedicalRecord}
-                onSave={handleSaveMedicalRecord}
-              />
-            </div>
-          </div>
+          )}
         </div>
+      </div>
+
+      {/* Medical Record Form Modal */}
+      {isFormOpen && selectedRecord && (
+        <MedicalRecordForm
+          appointmentId={selectedRecord}
+          isOpen={isFormOpen}
+          onClose={handleCloseForm}
+          onSave={() => {
+            // Reload data after saving
+            loadData();
+          }}
+        />
       )}
     </div>
   );

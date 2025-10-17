@@ -3,6 +3,11 @@ import serviceService, {
   CreateServiceData,
   UpdateServiceData,
 } from "../services/serviceService";
+import {
+  uploadServiceImage,
+  deleteServiceImage,
+  deleteImageByPublicId,
+} from "../../../shared/utils/cloudinary";
 
 // Lấy tất cả dịch vụ
 export const getAllServices: RequestHandler = async (
@@ -101,9 +106,35 @@ export const createService: RequestHandler = async (
 
     const newService = await serviceService.createService(serviceData);
 
+    // Upload ảnh nếu có
+    let imageData = null;
+    if (req.file) {
+      try {
+        imageData = await uploadServiceImage(
+          req.file.path,
+          newService._id as string
+        );
+
+        // Cập nhật service với thông tin ảnh
+        await serviceService.updateService(newService._id as string, {
+          imageUrl: imageData.url,
+          imagePublicId: imageData.public_id,
+          thumbnailUrl: imageData.thumbnail_url,
+        });
+      } catch (imageError) {
+        console.error("Error uploading service image:", imageError);
+        // Không return error, vì service đã được tạo thành công
+      }
+    }
+
+    // Lấy service với thông tin ảnh đã cập nhật
+    const updatedService = await serviceService.getServiceById(
+      newService._id as string
+    );
+
     res.status(201).json({
       success: true,
-      data: newService,
+      data: updatedService,
       message: "Tạo dịch vụ thành công",
     });
   } catch (error: any) {
@@ -149,6 +180,35 @@ export const updateService: RequestHandler = async (
         message: "Thời gian khám tối thiểu là 15 phút",
       });
       return;
+    }
+
+    // Lấy service hiện tại để kiểm tra ảnh cũ
+    const currentService = await serviceService.getServiceById(id);
+    if (!currentService) {
+      res.status(404).json({
+        success: false,
+        message: "Không tìm thấy dịch vụ",
+      });
+      return;
+    }
+
+    // Xử lý upload ảnh mới
+    if (req.file) {
+      try {
+        // Xóa ảnh cũ nếu có
+        if (currentService.imagePublicId) {
+          await deleteImageByPublicId(currentService.imagePublicId);
+        }
+
+        // Upload ảnh mới
+        const imageData = await uploadServiceImage(req.file.path, id);
+        updateData.imageUrl = imageData.url;
+        updateData.imagePublicId = imageData.public_id;
+        updateData.thumbnailUrl = imageData.thumbnail_url;
+      } catch (imageError) {
+        console.error("Error uploading service image:", imageError);
+        // Tiếp tục update các trường khác
+      }
     }
 
     const updatedService = await serviceService.updateService(id, updateData);
@@ -223,6 +283,17 @@ export const hardDeleteService: RequestHandler = async (
 ) => {
   try {
     const { id } = req.params;
+
+    // Lấy thông tin service để xóa ảnh
+    const service = await serviceService.getServiceById(id);
+    if (service && service.imagePublicId) {
+      try {
+        await deleteImageByPublicId(service.imagePublicId);
+      } catch (imageError) {
+        console.error("Error deleting service image:", imageError);
+      }
+    }
+
     const isDeleted = await serviceService.hardDeleteService(id);
 
     if (!isDeleted) {

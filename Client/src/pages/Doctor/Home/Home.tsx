@@ -15,8 +15,8 @@ import { useAuth } from "../../../contexts/AuthContext";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 import { specialtyApi } from "../../../api/specialtyApi";
-import useUnreadNotifications from "../../../components/useUnreadNotifications";
-import { useNotificationAlerts } from "../../useNotificationAlerts";
+import useUnreadNotifications from "../../../components/Notifications/useUnreadNotifications";
+import { useNotificationAlerts } from "../../Patient/Notifications/useNotificationAlerts";
 import useNotifications from "../../../hooks/useNotifications";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import api from "../../../api/axiosConfig";
@@ -202,8 +202,8 @@ const DoctorDashboard: React.FC = () => {
       color: "bg-blue-500",
       change: statsLoading
         ? "..."
-        : `${dashboardStats?.percentageChange?.patients > 0 ? "+" : ""}${
-            dashboardStats?.percentageChange?.patients || 0
+        : `${(dashboardStats?.percentageChange?.patients ?? 0) > 0 ? "+" : ""}${
+            dashboardStats?.percentageChange?.patients ?? 0
           }%`,
     },
     {
@@ -215,9 +215,9 @@ const DoctorDashboard: React.FC = () => {
       color: "bg-green-500",
       change: statsLoading
         ? "..."
-        : `${dashboardStats?.percentageChange?.completed > 0 ? "+" : ""}${
-            dashboardStats?.percentageChange?.completed || 0
-          }%`,
+        : `${
+            (dashboardStats?.percentageChange?.completed ?? 0) > 0 ? "+" : ""
+          }${dashboardStats?.percentageChange?.completed ?? 0}%`,
     },
     {
       title: "Đang chờ khám",
@@ -228,8 +228,8 @@ const DoctorDashboard: React.FC = () => {
       color: "bg-orange-500",
       change: statsLoading
         ? "..."
-        : `${dashboardStats?.percentageChange?.pending > 0 ? "+" : ""}${
-            dashboardStats?.percentageChange?.pending || 0
+        : `${(dashboardStats?.percentageChange?.pending ?? 0) > 0 ? "+" : ""}${
+            dashboardStats?.percentageChange?.pending ?? 0
           }%`,
     },
     {
@@ -241,9 +241,9 @@ const DoctorDashboard: React.FC = () => {
       color: "bg-red-500",
       change: statsLoading
         ? "..."
-        : `${dashboardStats?.percentageChange?.cancelled > 0 ? "+" : ""}${
-            dashboardStats?.percentageChange?.cancelled || 0
-          }%`,
+        : `${
+            (dashboardStats?.percentageChange?.cancelled ?? 0) > 0 ? "+" : ""
+          }${dashboardStats?.percentageChange?.cancelled ?? 0}%`,
     },
   ];
 
@@ -255,17 +255,12 @@ const DoctorDashboard: React.FC = () => {
   } = useQuery({
     queryKey: ["todayAppointments", user?._id],
     queryFn: () => {
-      console.log("Fetching appointments for user:", user);
       return getTodayAppointments(user?._id || "");
     },
     enabled: !!user?._id,
     staleTime: 2 * 60 * 1000, // 2 minutes
     refetchInterval: 60 * 1000, // Refresh every minute
   });
-
-  console.log("Today appointments data:", todayAppointments);
-  console.log("Appointments loading:", appointmentsLoading);
-  console.log("Appointments error:", appointmentsError);
 
   // Process appointments data with better error handling
   const upcomingAppointments = (todayAppointments || []).map(
@@ -774,13 +769,7 @@ const DoctorDashboard: React.FC = () => {
                       className="flex items-start space-x-3"
                     >
                       <div
-                        className={`mt-1 h-2 w-2 rounded-full ${
-                          activity.type === "completed"
-                            ? "bg-green-500"
-                            : activity.type === "updated"
-                            ? "bg-blue-500"
-                            : "bg-orange-500"
-                        }`}
+                        className={`mt-1 h-2 w-2 rounded-full ${activity.color}`}
                       ></div>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-gray-900">

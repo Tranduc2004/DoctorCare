@@ -1,4 +1,4 @@
-import Service, { IService } from '../models/Service';
+import Service, { IService } from "../models/Service";
 
 export interface CreateServiceData {
   name: string;
@@ -12,6 +12,9 @@ export interface UpdateServiceData {
   description?: string;
   price?: number;
   duration?: number;
+  imageUrl?: string;
+  imagePublicId?: string;
+  thumbnailUrl?: string;
   isActive?: boolean;
 }
 
@@ -33,7 +36,10 @@ export class ServiceService {
   }
 
   // Cập nhật dịch vụ
-  async updateService(id: string, data: UpdateServiceData): Promise<IService | null> {
+  async updateService(
+    id: string,
+    data: UpdateServiceData
+  ): Promise<IService | null> {
     return await Service.findByIdAndUpdate(
       id,
       { ...data },
@@ -60,7 +66,7 @@ export class ServiceService {
   async searchServices(query: string): Promise<IService[]> {
     return await Service.find({
       $text: { $search: query },
-      isActive: true
+      isActive: true,
     }).sort({ score: { $meta: "textScore" } });
   }
 

@@ -21,6 +21,9 @@ export interface IAppointment extends Document {
     email?: string;
   };
 
+  // High-level service type selected by patient at booking (e.g. KHAM_CHUYEN_KHOA)
+  serviceType?: string;
+
   // Payment related fields
   consultationFee?: number;
   depositAmount?: number;
@@ -122,8 +125,11 @@ const AppointmentSchema: Schema = new Schema(
     patientInfo: {
       name: { type: String },
       phone: { type: String },
-      email: { type: String }
+      email: { type: String },
     },
+
+    // Which high-level service was selected at booking (e.g. KHAM_CHUYEN_KHOA)
+    serviceType: { type: String },
 
     // Payment fields
     consultationFee: { type: Number, min: 0 },

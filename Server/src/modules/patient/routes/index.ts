@@ -2,6 +2,7 @@
 import { Router } from "express";
 import appointmentRoutes from "./appointmentRoutes";
 import medicalRecordRoutes from "./medicalRecordRoutes";
+import prescriptionRoutes from "./prescriptionRoutes";
 import authRoutes from "./authRoutes";
 import profileRoutes from "./profileRoutes";
 import uploadRoutes from "./uploadRoutes";
@@ -13,6 +14,7 @@ const router = Router();
 router.use("/auth", authRoutes);
 router.use("/appointments", appointmentRoutes);
 router.use("/medical-records", medicalRecordRoutes);
+router.use("/prescriptions", prescriptionRoutes);
 router.use("/profile", profileRoutes);
 router.use("/upload", uploadRoutes);
 router.use("/payments", paymentRoutes);

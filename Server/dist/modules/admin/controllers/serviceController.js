@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getActiveServices = exports.searchServices = exports.hardDeleteService = exports.deleteService = exports.updateService = exports.createService = exports.getServiceById = exports.getAllServices = void 0;
 const serviceService_1 = __importDefault(require("../services/serviceService"));
+const cloudinary_1 = require("../../../shared/utils/cloudinary");
 // Lấy tất cả dịch vụ
 const getAllServices = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -93,9 +94,28 @@ const createService = (req, res, next) => __awaiter(void 0, void 0, void 0, func
             duration: Number(duration),
         };
         const newService = yield serviceService_1.default.createService(serviceData);
+        // Upload ảnh nếu có
+        let imageData = null;
+        if (req.file) {
+            try {
+                imageData = yield (0, cloudinary_1.uploadServiceImage)(req.file.path, newService._id);
+                // Cập nhật service với thông tin ảnh
+                yield serviceService_1.default.updateService(newService._id, {
+                    imageUrl: imageData.url,
+                    imagePublicId: imageData.public_id,
+                    thumbnailUrl: imageData.thumbnail_url,
+                });
+            }
+            catch (imageError) {
+                console.error("Error uploading service image:", imageError);
+                // Không return error, vì service đã được tạo thành công
+            }
+        }
+        // Lấy service với thông tin ảnh đã cập nhật
+        const updatedService = yield serviceService_1.default.getServiceById(newService._id);
         res.status(201).json({
             success: true,
-            data: newService,
+            data: updatedService,
             message: "Tạo dịch vụ thành công",
         });
     }
@@ -134,6 +154,33 @@ const updateService = (req, res, next) => __awaiter(void 0, void 0, void 0, func
                 message: "Thời gian khám tối thiểu là 15 phút",
             });
             return;
+        }
+        // Lấy service hiện tại để kiểm tra ảnh cũ
+        const currentService = yield serviceService_1.default.getServiceById(id);
+        if (!currentService) {
+            res.status(404).json({
+                success: false,
+                message: "Không tìm thấy dịch vụ",
+            });
+            return;
+        }
+        // Xử lý upload ảnh mới
+        if (req.file) {
+            try {
+                // Xóa ảnh cũ nếu có
+                if (currentService.imagePublicId) {
+                    yield (0, cloudinary_1.deleteImageByPublicId)(currentService.imagePublicId);
+                }
+                // Upload ảnh mới
+                const imageData = yield (0, cloudinary_1.uploadServiceImage)(req.file.path, id);
+                updateData.imageUrl = imageData.url;
+                updateData.imagePublicId = imageData.public_id;
+                updateData.thumbnailUrl = imageData.thumbnail_url;
+            }
+            catch (imageError) {
+                console.error("Error uploading service image:", imageError);
+                // Tiếp tục update các trường khác
+            }
         }
         const updatedService = yield serviceService_1.default.updateService(id, updateData);
         if (!updatedService) {
@@ -195,6 +242,16 @@ exports.deleteService = deleteService;
 const hardDeleteService = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
+        // Lấy thông tin service để xóa ảnh
+        const service = yield serviceService_1.default.getServiceById(id);
+        if (service && service.imagePublicId) {
+            try {
+                yield (0, cloudinary_1.deleteImageByPublicId)(service.imagePublicId);
+            }
+            catch (imageError) {
+                console.error("Error deleting service image:", imageError);
+            }
+        }
         const isDeleted = yield serviceService_1.default.hardDeleteService(id);
         if (!isDeleted) {
             res.status(404).json({

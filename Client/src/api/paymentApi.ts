@@ -1,4 +1,9 @@
 import api from "./axiosConfig";
+import {
+  vnpayApi,
+  VNPayPaymentRequest,
+  VNPayPaymentResponse,
+} from "./vnpayApi";
 
 export const paymentApi = {
   getHistory: async () => {
@@ -31,7 +36,7 @@ export const paymentApi = {
     paymentMethod: string,
     appointmentId?: string
   ) => {
-    const body: any = {
+    const body: Record<string, unknown> = {
       invoiceId,
       paymentMethod,
       transactionId: Date.now().toString(),
@@ -68,5 +73,31 @@ export const paymentApi = {
       body || {}
     );
     return response.data;
+  },
+
+  // VNPay Integration
+  vnpay: {
+    // Create VNPay payment URL
+    createPayment: async (
+      data: VNPayPaymentRequest
+    ): Promise<VNPayPaymentResponse> => {
+      return vnpayApi.createPayment(data);
+    },
+
+    // Get VNPay payment status
+    getPaymentStatus: async (txnRef: string) => {
+      return vnpayApi.getPaymentStatus(txnRef);
+    },
+
+    // Redirect to VNPay
+    redirectToPayment: (paymentUrl: string) => {
+      vnpayApi.redirectToPayment(paymentUrl);
+    },
+
+    // Helper functions
+    parseReturnUrl: () => vnpayApi.parseReturnUrl(),
+    isPaymentSuccessful: () => vnpayApi.isPaymentSuccessful(),
+    getErrorMessage: (code: string) => vnpayApi.getErrorMessage(code),
+    formatAmount: (amount: number) => vnpayApi.formatAmount(amount),
   },
 };

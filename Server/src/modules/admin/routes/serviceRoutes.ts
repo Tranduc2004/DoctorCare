@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { adminAuth } from "../middlewares/adminAuth";
+import { adminAuth, uploadSingle } from "../middlewares";
 import {
   getAllServices,
   searchServices,
@@ -29,10 +29,10 @@ router.get("/active/list", getActiveServices);
 router.get("/:id", getServiceById);
 
 // Tạo dịch vụ mới
-router.post("/", createService);
+router.post("/", uploadSingle, createService);
 
 // Cập nhật dịch vụ
-router.put("/:id", updateService);
+router.put("/:id", uploadSingle, updateService);
 
 // Xóa dịch vụ (soft delete)
 router.delete("/:id", deleteService);

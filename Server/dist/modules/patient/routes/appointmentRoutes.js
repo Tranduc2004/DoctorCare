@@ -15,4 +15,8 @@ router.post("/:id/extend", controllers_1.extendAppointment);
 router.post("/:nextId/extension-consent", controllers_1.extensionConsent);
 // Check-in by patient or doctor
 router.post("/:id/checkin", controllers_1.checkinAppointment);
+// Patient proposes reschedule (send 1-5 alternative slots)
+router.post("/:id/reschedule-propose", controllers_1.reschedulePropose);
+// Patient accepts a reschedule proposed by doctor (or confirms a new slot)
+router.post("/:id/reschedule-accept", controllers_1.rescheduleAccept);
 exports.default = router;

@@ -6,7 +6,6 @@ import { FaArrowLeftLong } from "react-icons/fa6";
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-  const [devToken, setDevToken] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -18,8 +17,9 @@ export default function ForgotPasswordPage() {
       setLoading(true);
       const res = await forgotPassword({ email });
       toast.success(res.data?.message || "Nếu email tồn tại, liên kết đã gửi");
-      if (res.data?.token) setDevToken(res.data.token);
-    } catch (err: unknown) {
+      // if (res.data?.token) setDevToken(res.data.token); // Removed due to undefined function
+      // if (res.data?.token) setDevToken(res.data.token);
+    } catch (err) {
       const errorMessage =
         (err as { response?: { data?: { message?: string } } })?.response?.data
           ?.message || "Có lỗi xảy ra";

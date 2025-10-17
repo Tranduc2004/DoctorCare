@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.checkinAppointment = exports.extensionConsent = exports.extendAppointment = exports.updateSymptoms = exports.cancelAppointment = exports.getAppointmentHistory = exports.getPatientAppointments = exports.createAppointment = void 0;
+exports.rescheduleAccept = exports.reschedulePropose = exports.checkinAppointment = exports.extensionConsent = exports.extendAppointment = exports.updateSymptoms = exports.cancelAppointment = exports.getAppointmentHistory = exports.getPatientAppointments = exports.createAppointment = void 0;
 const Appointment_1 = __importDefault(require("../models/Appointment"));
 const notificationService_1 = require("../../../shared/services/notificationService");
 const DoctorSchedule_1 = __importDefault(require("../../doctor/models/DoctorSchedule"));
@@ -23,7 +23,7 @@ const mongoose_1 = __importDefault(require("mongoose"));
 const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a, _b, _c;
     try {
-        const { patientId, doctorId, scheduleId, symptoms, note, appointmentTime, mode, } = req.body;
+        const { patientId, doctorId, scheduleId, symptoms, note, serviceType, appointmentTime, mode, patientInfo, } = req.body;
         if (!patientId || !doctorId || !scheduleId) {
             res.status(400).json({ message: "Thiếu dữ liệu bắt buộc" });
             return;
@@ -37,18 +37,32 @@ const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
             res.status(400).json({ message: "Khung giờ đã được đặt" });
             return;
         }
-        // Enforce: one appointment per patient per day
-        const day = schedule.date; // already YYYY-MM-DD
-        const sameDay = yield Appointment_1.default.findOne({
+        // Enforce: one appointment per patient per clinic-local day
+        // Requirement: only count PENDING / CONFIRMED appointments as blocking new bookings.
+        // Mapping: pending -> AppointmentStatus.AWAIT_PAYMENT, confirmed -> AppointmentStatus.BOOKED/CONFIRMED.
+        // We expect `schedule.date` to be the clinic-local date in YYYY-MM-DD format (normalized to clinic TZ).
+        const appointmentDate = schedule.date; // YYYY-MM-DD (clinic local)
+        // Block if patient already has an appointment that is pending (awaiting payment)
+        // or already confirmed/booked for the same clinic-local date.
+        const blockingStatuses = [
+            appointment_1.AppointmentStatus.AWAIT_PAYMENT,
+            // include both BOOKED and CONFIRMED if your flow uses either
+            appointment_1.AppointmentStatus.BOOKED,
+            appointment_1.AppointmentStatus.CONFIRMED,
+        ].filter(Boolean);
+        const existing = yield Appointment_1.default.findOne({
             patientId,
-            appointmentDate: day,
-            // any status except cancelled
-            status: { $nin: [appointment_1.AppointmentStatus.CANCELLED, appointment_1.AppointmentStatus.CLOSED] },
+            appointmentDate,
+            status: { $in: blockingStatuses },
         });
-        if (sameDay) {
-            res.status(400).json({ message: "Mỗi ngày chỉ được đặt 1 lịch" });
+        if (existing) {
+            res.status(400).json({
+                message: "Mỗi bệnh nhân chỉ được 1 lịch mỗi ngày (chờ thanh toán hoặc đã xác nhận).",
+            });
             return;
         }
+        // Note: do not block booking based on prior failed payments here.
+        // Allow patients to retry booking if previous payment attempts failed.
         // Optional: one per specialty/day (if doctor has specialty)
         // We check other appointments this day whose doctor shares same specialty
         // Note: best-effort to avoid extra joins if model differs
@@ -73,7 +87,7 @@ const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
                 var _a, _b, _c, _d, _e, _f;
                 const d = (_a = a.scheduleId) === null || _a === void 0 ? void 0 : _a.date;
                 const sp = (_e = (_d = (_c = (_b = a.doctorId) === null || _b === void 0 ? void 0 : _b.specialty) === null || _c === void 0 ? void 0 : _c.toString) === null || _d === void 0 ? void 0 : _d.call(_c)) !== null && _e !== void 0 ? _e : (_f = a.doctorId) === null || _f === void 0 ? void 0 : _f.specialty;
-                return d === day && sp && specId && sp === specId;
+                return d === appointmentDate && sp && specId && sp === specId;
             });
             if (hasSameSpecSameDay) {
                 res
@@ -89,6 +103,7 @@ const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
             patientId,
             doctorId,
             scheduleId,
+            serviceType,
             status: appointment_1.AppointmentStatus.AWAIT_PAYMENT,
             holdExpiresAt,
             mode: mode === "online" ? "online" : "offline",
@@ -96,6 +111,7 @@ const createAppointment = (req, res) => __awaiter(void 0, void 0, void 0, functi
             note,
             appointmentTime: appointmentTime || schedule.startTime,
             appointmentDate: schedule.date,
+            patientInfo: patientInfo || undefined,
         });
         schedule.isBooked = true;
         yield schedule.save();
@@ -167,6 +183,11 @@ const getPatientAppointments = (req, res) => __awaiter(void 0, void 0, void 0, f
         }
         const appointments = yield Appointment_1.default.find({ patientId })
             .populate({
+            path: "patientId",
+            select: "name email phone",
+            model: "Patient",
+        })
+            .populate({
             path: "doctorId",
             select: "name specialty workplace",
             model: "Doctor",
@@ -175,9 +196,14 @@ const getPatientAppointments = (req, res) => __awaiter(void 0, void 0, void 0, f
             path: "scheduleId",
             model: "DoctorSchedule",
         })
+            // include the proposed new schedule object when doctor suggested a reschedule
+            .populate({
+            path: "newScheduleId",
+            model: "DoctorSchedule",
+        })
             .sort({ createdAt: -1 })
             .lean();
-        console.log("API - Found appointments:", appointments.length);
+        // console.log("API - Found appointments:", appointments.length);
         // Send response with data property
         res.json({
             success: true,
@@ -208,8 +234,10 @@ const getAppointmentHistory = (req, res) => __awaiter(void 0, void 0, void 0, fu
                 $in: [appointment_1.AppointmentStatus.COMPLETED, appointment_1.AppointmentStatus.CANCELLED],
             },
         })
+            .populate("patientId", "name email phone")
             .populate("doctorId", "name specialty workplace")
             .populate("scheduleId")
+            .populate({ path: "newScheduleId", model: "DoctorSchedule" })
             .sort({ updatedAt: -1 })
             .lean();
         res.json(list);
@@ -461,7 +489,9 @@ const checkinAppointment = (req, res) => __awaiter(void 0, void 0, void 0, funct
         const { id } = req.params;
         const { by } = req.body;
         if (!id || !by) {
-            return res.status(400).json({ message: "Missing appointment id or 'by'" });
+            return res
+                .status(400)
+                .json({ message: "Missing appointment id or 'by'" });
         }
         const appointment = yield Appointment_1.default.findById(id);
         if (!appointment)
@@ -507,3 +537,164 @@ const checkinAppointment = (req, res) => __awaiter(void 0, void 0, void 0, funct
     }
 });
 exports.checkinAppointment = checkinAppointment;
+// Patient: propose reschedule (send array of schedule ids or free-text slots)
+const reschedulePropose = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { id } = req.params;
+        const { patientId, proposedSlots, message } = req.body;
+        if (!id || !patientId) {
+            return res
+                .status(400)
+                .json({ message: "Missing appointment id or patientId" });
+        }
+        const appt = yield Appointment_1.default.findOne({ _id: id, patientId });
+        if (!appt)
+            return res.status(404).json({ message: "Appointment not found" });
+        // Do not allow proposing reschedule once consultation started
+        if (appt.status === appointment_1.AppointmentStatus.IN_CONSULT) {
+            return res
+                .status(400)
+                .json({ message: "Cannot reschedule after consultation has started" });
+        }
+        // Attach a reschedule object to meta
+        const now = new Date();
+        appt.meta = appt.meta || {};
+        appt.meta.reschedule = {
+            proposedBy: "patient",
+            proposedAt: now,
+            proposedSlots: proposedSlots || [],
+            message: message || "",
+            expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000), // default 7 days
+        };
+        yield appt.save();
+        // Notify doctor
+        try {
+            yield (0, notificationService_1.createNotification)({
+                userId: String(appt.doctorId),
+                type: "appointment",
+                title: "Bệnh nhân đề nghị đổi lịch",
+                body: `Bệnh nhân đã đề nghị đổi lịch cho lịch ${String(appt._id)}.`,
+                meta: { appointmentId: appt._id },
+            });
+        }
+        catch (e) {
+            console.error("Notify doctor about reschedule propose failed", e);
+        }
+        res.json({ message: "Reschedule proposed", appointment: appt });
+    }
+    catch (err) {
+        console.error(err);
+        res
+            .status(500)
+            .json({ message: "Error proposing reschedule", error: String(err) });
+    }
+});
+exports.reschedulePropose = reschedulePropose;
+// Patient: accept a reschedule (either doctor's proposed newScheduleId or a selected slot)
+const rescheduleAccept = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { id } = req.params;
+        const { patientId, slotId, acceptDoctorProposal } = req.body;
+        if (!id || !patientId)
+            return res.status(400).json({ message: "Missing input" });
+        const appt = yield Appointment_1.default.findOne({ _id: id, patientId });
+        if (!appt)
+            return res.status(404).json({ message: "Appointment not found" });
+        if (!((_a = appt.meta) === null || _a === void 0 ? void 0 : _a.reschedule)) {
+            return res.status(400).json({ message: "No reschedule pending" });
+        }
+        // If doctor proposed a newScheduleId (stored in appointment.newScheduleId), accept it
+        if (acceptDoctorProposal && appt.newScheduleId) {
+            // move schedule booking
+            const oldScheduleId = appt.scheduleId;
+            appt.scheduleId = appt.newScheduleId;
+            appt.newScheduleId = undefined;
+            appt.status = appointment_1.AppointmentStatus.BOOKED;
+            appt.meta.reschedule.acceptedAt = new Date();
+            appt.meta.reschedule.acceptedBy = "patient";
+            yield appt.save();
+            // update doctor schedule flags
+            try {
+                if (oldScheduleId) {
+                    yield DoctorSchedule_1.default.findByIdAndUpdate(oldScheduleId, {
+                        isBooked: false,
+                    });
+                }
+                if (appt.scheduleId) {
+                    yield DoctorSchedule_1.default.findByIdAndUpdate(appt.scheduleId, {
+                        isBooked: true,
+                    });
+                }
+            }
+            catch (e) {
+                console.error("Failed to update schedule flags", e);
+            }
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(appt.doctorId),
+                    type: "appointment",
+                    title: "Bệnh nhân xác nhận đổi lịch",
+                    body: `Bệnh nhân đã xác nhận lịch mới cho ${String(appt._id)}`,
+                    meta: { appointmentId: appt._id },
+                });
+            }
+            catch (e) {
+                console.error("Notify doctor failed", e);
+            }
+            return res.json({
+                message: "Accepted doctor's reschedule",
+                appointment: appt,
+            });
+        }
+        // Otherwise if patient selected a slotId, attempt to move
+        if (slotId) {
+            const newSchedule = yield DoctorSchedule_1.default.findOne({
+                _id: slotId,
+                isBooked: false,
+            });
+            if (!newSchedule)
+                return res.status(404).json({ message: "Selected slot not available" });
+            const oldScheduleId = appt.scheduleId;
+            appt.scheduleId = newSchedule._id;
+            appt.status = appointment_1.AppointmentStatus.BOOKED;
+            appt.meta.reschedule.acceptedAt = new Date();
+            appt.meta.reschedule.acceptedBy = "patient";
+            yield appt.save();
+            try {
+                if (oldScheduleId) {
+                    yield DoctorSchedule_1.default.findByIdAndUpdate(oldScheduleId, {
+                        isBooked: false,
+                    });
+                }
+                yield DoctorSchedule_1.default.findByIdAndUpdate(newSchedule._id, {
+                    isBooked: true,
+                });
+            }
+            catch (e) {
+                console.error("Failed to update schedule flags", e);
+            }
+            try {
+                yield (0, notificationService_1.createNotification)({
+                    userId: String(appt.doctorId),
+                    type: "appointment",
+                    title: "Bệnh nhân xác nhận đổi lịch",
+                    body: `Bệnh nhân đã chọn lịch mới cho ${String(appt._id)}`,
+                    meta: { appointmentId: appt._id },
+                });
+            }
+            catch (e) {
+                console.error("Notify doctor failed", e);
+            }
+            return res.json({ message: "Reschedule accepted", appointment: appt });
+        }
+        return res.status(400).json({ message: "No action taken" });
+    }
+    catch (err) {
+        console.error(err);
+        res
+            .status(500)
+            .json({ message: "Error accepting reschedule", error: String(err) });
+    }
+});
+exports.rescheduleAccept = rescheduleAccept;

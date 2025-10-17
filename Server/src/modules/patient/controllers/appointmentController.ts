@@ -18,6 +18,7 @@ export const createAppointment = async (
       scheduleId,
       symptoms,
       note,
+      serviceType,
       appointmentTime,
       mode,
       patientInfo,
@@ -27,6 +28,7 @@ export const createAppointment = async (
       scheduleId: string;
       symptoms?: string;
       note?: string;
+      serviceType?: string;
       appointmentTime?: string;
       mode?: "online" | "offline";
       patientInfo?: {
@@ -52,18 +54,37 @@ export const createAppointment = async (
       return;
     }
 
-    // Enforce: one appointment per patient per day
-    const day = schedule.date; // already YYYY-MM-DD
-    const sameDay = await Appointment.findOne({
+    // Enforce: one appointment per patient per clinic-local day
+    // Requirement: only count PENDING / CONFIRMED appointments as blocking new bookings.
+    // Mapping: pending -> AppointmentStatus.AWAIT_PAYMENT, confirmed -> AppointmentStatus.BOOKED/CONFIRMED.
+    // We expect `schedule.date` to be the clinic-local date in YYYY-MM-DD format (normalized to clinic TZ).
+    const appointmentDate = schedule.date; // YYYY-MM-DD (clinic local)
+
+    // Block if patient already has an appointment that is pending (awaiting payment)
+    // or already confirmed/booked for the same clinic-local date.
+    const blockingStatuses = [
+      AppointmentStatus.AWAIT_PAYMENT,
+      // include both BOOKED and CONFIRMED if your flow uses either
+      AppointmentStatus.BOOKED,
+      AppointmentStatus.CONFIRMED,
+    ].filter(Boolean);
+
+    const existing = await Appointment.findOne({
       patientId,
-      appointmentDate: day,
-      // any status except cancelled
-      status: { $nin: [AppointmentStatus.CANCELLED, AppointmentStatus.CLOSED] },
+      appointmentDate,
+      status: { $in: blockingStatuses },
     });
-    if (sameDay) {
-      res.status(400).json({ message: "Mỗi ngày chỉ được đặt 1 lịch" });
+
+    if (existing) {
+      res.status(400).json({
+        message:
+          "Mỗi bệnh nhân chỉ được 1 lịch mỗi ngày (chờ thanh toán hoặc đã xác nhận).",
+      });
       return;
     }
+
+    // Note: do not block booking based on prior failed payments here.
+    // Allow patients to retry booking if previous payment attempts failed.
 
     // Optional: one per specialty/day (if doctor has specialty)
     // We check other appointments this day whose doctor shares same specialty
@@ -87,7 +108,7 @@ export const createAppointment = async (
       const hasSameSpecSameDay = (sameDayAppointments || []).some((a: any) => {
         const d = a.scheduleId?.date;
         const sp = a.doctorId?.specialty?.toString?.() ?? a.doctorId?.specialty;
-        return d === day && sp && specId && sp === specId;
+        return d === appointmentDate && sp && specId && sp === specId;
       });
       if (hasSameSpecSameDay) {
         res
@@ -105,6 +126,7 @@ export const createAppointment = async (
       patientId,
       doctorId,
       scheduleId,
+      serviceType,
       status: AppointmentStatus.AWAIT_PAYMENT,
       holdExpiresAt,
       mode: mode === "online" ? "online" : "offline",

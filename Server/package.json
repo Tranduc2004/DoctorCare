@@ -1,7 +1,7 @@
 {
   "name": "server",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "index.ts",
   "scripts": {
     "dev": "nodemon src/index.ts",
     "seed": "ts-node scripts/initData.ts",
@@ -31,8 +31,10 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@payos/node": "^2.0.3",
     "@types/axios": "^0.9.36",
     "@types/multer": "^1.4.12",
+    "@types/socket.io": "^3.0.1",
     "@types/uuid": "^10.0.0",
     "axios": "^1.12.2",
     "bcryptjs": "^3.0.2",
@@ -44,6 +46,8 @@
     "mongoose": "^8.14.0",
     "multer": "^2.0.0",
     "nodemailer": "^7.0.6",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.8.1",
     "streamifier": "^0.1.1",
     "uuid": "^13.0.0"
   }

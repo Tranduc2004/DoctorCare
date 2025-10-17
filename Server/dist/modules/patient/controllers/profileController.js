@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.upsertInsurance = exports.upsertProfile = exports.getProfile = void 0;
+exports.syncFromMedicalRecord = exports.upsertInsurance = exports.upsertProfile = exports.getProfile = void 0;
 const PatientProfile_1 = __importDefault(require("../models/PatientProfile"));
 const Insurance_1 = __importDefault(require("../models/Insurance"));
 const getProfile = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
@@ -67,3 +67,82 @@ const upsertInsurance = (req, res) => __awaiter(void 0, void 0, void 0, function
     }
 });
 exports.upsertInsurance = upsertInsurance;
+// Sync patient profile data from medical record
+const syncFromMedicalRecord = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l;
+    try {
+        const { patientId, medicalRecordData, doctorId } = req.body;
+        if (!patientId)
+            return res.status(400).json({ message: "Thiếu patientId" });
+        if (!medicalRecordData)
+            return res.status(400).json({ message: "Thiếu dữ liệu medical record" });
+        if (!doctorId)
+            return res.status(400).json({ message: "Thiếu doctorId" });
+        // Extract relevant fields from medical record to sync with patient profile
+        const profileUpdateData = {};
+        // Basic administrative info
+        if ((_a = medicalRecordData.administrativeSnapshot) === null || _a === void 0 ? void 0 : _a.fullName) {
+            profileUpdateData.fullName = medicalRecordData.administrativeSnapshot.fullName;
+        }
+        if ((_b = medicalRecordData.administrativeSnapshot) === null || _b === void 0 ? void 0 : _b.birthYear) {
+            // Convert birth year to DOB format (YYYY-01-01)
+            profileUpdateData.dob = `${medicalRecordData.administrativeSnapshot.birthYear}-01-01`;
+        }
+        if ((_c = medicalRecordData.administrativeSnapshot) === null || _c === void 0 ? void 0 : _c.gender) {
+            profileUpdateData.gender = medicalRecordData.administrativeSnapshot.gender;
+        }
+        if ((_d = medicalRecordData.administrativeSnapshot) === null || _d === void 0 ? void 0 : _d.phone) {
+            profileUpdateData.phone = medicalRecordData.administrativeSnapshot.phone;
+        }
+        // Emergency contact
+        if ((_e = medicalRecordData.administrativeSnapshot) === null || _e === void 0 ? void 0 : _e.emergencyContact) {
+            const emergencyContact = medicalRecordData.administrativeSnapshot.emergencyContact;
+            if (emergencyContact.name) {
+                profileUpdateData.emergencyContactName = emergencyContact.name;
+            }
+            if (emergencyContact.phone) {
+                profileUpdateData.emergencyContactPhone = emergencyContact.phone;
+            }
+            if (emergencyContact.relation) {
+                profileUpdateData.emergencyContactRelation = emergencyContact.relation;
+            }
+        }
+        // Medical information from quick screening
+        if ((_f = medicalRecordData.quickScreening) === null || _f === void 0 ? void 0 : _f.allergies) {
+            profileUpdateData.allergies = medicalRecordData.quickScreening.allergies;
+        }
+        if ((_g = medicalRecordData.quickScreening) === null || _g === void 0 ? void 0 : _g.currentMedications) {
+            profileUpdateData.medications = medicalRecordData.quickScreening.currentMedications;
+        }
+        // Vitals - update height and weight if provided
+        if ((_j = (_h = medicalRecordData.quickScreening) === null || _h === void 0 ? void 0 : _h.vitals) === null || _j === void 0 ? void 0 : _j.height) {
+            profileUpdateData.heightCm = Number(medicalRecordData.quickScreening.vitals.height);
+        }
+        if ((_l = (_k = medicalRecordData.quickScreening) === null || _k === void 0 ? void 0 : _k.vitals) === null || _l === void 0 ? void 0 : _l.weight) {
+            profileUpdateData.weightKg = Number(medicalRecordData.quickScreening.vitals.weight);
+        }
+        // Add audit log entry
+        const auditEntry = {
+            action: "sync_from_medical_record",
+            timestamp: new Date(),
+            userId: doctorId,
+            details: "Đồng bộ thông tin từ hồ sơ khám bệnh"
+        };
+        // Update patient profile
+        const updatedProfile = yield PatientProfile_1.default.findOneAndUpdate({ patientId }, {
+            $set: Object.assign(Object.assign({}, profileUpdateData), { lastEditedBy: doctorId }),
+            $push: { auditLog: auditEntry }
+        }, { new: true, upsert: true });
+        res.json({
+            success: true,
+            message: "Đã đồng bộ thông tin bệnh nhân từ hồ sơ khám bệnh",
+            updatedProfile,
+            syncedFields: Object.keys(profileUpdateData)
+        });
+    }
+    catch (error) {
+        console.error("Error syncing profile from medical record:", error);
+        res.status(500).json({ message: "Lỗi đồng bộ hồ sơ", error });
+    }
+});
+exports.syncFromMedicalRecord = syncFromMedicalRecord;

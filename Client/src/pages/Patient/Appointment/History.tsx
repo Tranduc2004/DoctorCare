@@ -4,6 +4,8 @@ import {
   getMyAppointments,
   getDoctorSchedules,
 } from "../../../api/appointmentApi";
+import { getDoctorById } from "../../../api/doctorsApi";
+import { FaExclamationTriangle } from "react-icons/fa";
 import { useAuth } from "../../../contexts/AuthContext";
 import {
   FaCalendarAlt,
@@ -17,7 +19,7 @@ import {
   FaCalendarPlus,
   FaTag,
 } from "react-icons/fa";
-import ChatModal from "../../../components/Chat/ChatModal";
+import ChatModal from "../../../components/Doctor/Chat/ChatModal";
 import { sendMessage } from "../../../api/chatApi";
 
 /* ================== Types & constants ================== */
@@ -199,6 +201,41 @@ function initials(name?: string) {
     p[p.length - 1]?.[0] || ""
   ).toUpperCase()}`;
 }
+// Normalize a date/time string to clinic-local YYYY-MM-DD using VN timezone
+function toDateKeyTZ(iso?: string) {
+  if (!iso)
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Ho_Chi_Minh",
+    }).format(new Date());
+  try {
+    const d = new Date(iso);
+    return d.toLocaleDateString("en-CA", { timeZone: "Asia/Ho_Chi_Minh" }); // YYYY-MM-DD
+  } catch {
+    return iso.slice(0, 10);
+  }
+}
+
+// format YYYY-MM-DD -> dd/MM/YYYY for header display
+function headerDisplayFromKey(key: string) {
+  try {
+    const [y, m, d] = key.split("-");
+    return `${d}/${m}/${y}`;
+  } catch {
+    return key;
+  }
+}
+
+// Status priority for ordering inside a day group
+function statusPriority(status?: string) {
+  const s = (status || "").toLowerCase();
+  if (s === "await_payment" || s === "pending_payment") return 0; // Chờ thanh toán
+  if (s === "booked" || s === "hold" || s === "holding") return 1; // Đang giữ chỗ / hold
+  if (s === "confirmed" || s === "paid") return 2; // Đã xác nhận
+  if (s === "payment_overdue" || s === "payment_failed") return 3; // Đặt thất bại
+  if (s === "cancelled") return 4; // Đã hủy
+  if (s === "no_show" || s === "noshow") return 5; // No-show
+  return 99;
+}
 function formatDate(d?: string) {
   if (!d) return "--";
   try {
@@ -347,11 +384,20 @@ export default function AppointmentHistoryPage() {
           getMyAppointments(user._id),
           getMyAppointmentHistory(user._id),
         ]);
+
+        console.log("Current appointments:", curr);
+        console.log("History appointments:", hist);
+        console.log("User ID:", user._id);
+
         const mergedArr: AppointmentItem[] = [
           ...(Array.isArray(curr) ? curr : []),
           ...(Array.isArray(hist) ? hist : []),
         ];
-        // Deduplicate by _id robustly: stringify ids and keep the most recent entry per id
+
+        // console.debug removed for cleaner logs
+        // Deduplicate by _id robustly: prefer entries that include populated doctor info
+        // (some sources may return unpopulated doctor references). If both lack
+        // populated fields, fall back to most-recent by date/update time.
         const byId = new Map<string, AppointmentItem>();
         for (const ap of mergedArr) {
           const id = String(ap._id);
@@ -360,11 +406,20 @@ export default function AppointmentHistoryPage() {
             continue;
           }
           const existing = byId.get(id)!;
-          const existingKey =
-            existing.scheduleId?.date || existing.updatedAt || "";
-          const currentKey = ap.scheduleId?.date || ap.updatedAt || "";
-          if (currentKey > existingKey) {
+          const existingHasDoctor = !!existing.doctorId?.name;
+          const currentHasDoctor = !!ap.doctorId?.name;
+          // prefer the one with populated doctor fields
+          if (currentHasDoctor && !existingHasDoctor) {
             byId.set(id, ap);
+            continue;
+          }
+          if (currentHasDoctor === existingHasDoctor) {
+            const existingKey =
+              existing.scheduleId?.date || existing.updatedAt || "";
+            const currentKey = ap.scheduleId?.date || ap.updatedAt || "";
+            if (currentKey > existingKey) {
+              byId.set(id, ap);
+            }
           }
         }
         const merged = Array.from(byId.values());
@@ -378,13 +433,108 @@ export default function AppointmentHistoryPage() {
           uniq.push(a);
         }
         const finalList = uniq;
-        // sort by most recent date (schedule date or updatedAt)
+        console.log("Final appointment list:", finalList);
+        console.log("Final count:", finalList.length);
+
+        // sort by most recent date (schedule date or updatedAt) using VN timezone date keys
         finalList.sort((a, b) => {
-          const ak = `${a.scheduleId?.date || a.updatedAt || ""}`;
-          const bk = `${b.scheduleId?.date || b.updatedAt || ""}`;
-          return bk.localeCompare(ak);
+          const ak = toDateKeyTZ(a.scheduleId?.date || a.updatedAt || "");
+          const bk = toDateKeyTZ(b.scheduleId?.date || b.updatedAt || "");
+          // newest first
+          if (bk < ak) return -1;
+          if (bk > ak) return 1;
+          // if same day, fallback to status priority then time
+          const prA = statusPriority(a.status as string);
+          const prB = statusPriority(b.status as string);
+          if (prA !== prB) return prA - prB;
+          return (b.scheduleId?.startTime || b.updatedAt || "").localeCompare(
+            a.scheduleId?.startTime || a.updatedAt || ""
+          );
         });
-        setItems(finalList);
+        // If some appointments lack populated doctor info (doctorId is a plain id string),
+        // fetch doctor details for those ids and merge before setting items so UI shows doctor name.
+        const doctorIdSet = new Set<string>();
+        for (const a of finalList) {
+          const did = a.doctorId;
+          if (!did) continue;
+          if (typeof did === "string") doctorIdSet.add(did);
+          else if (typeof did === "object") {
+            const didObj = did as Record<string, unknown>;
+            const maybeId = (didObj._id as string) || (didObj.id as string);
+            if (maybeId && !(didObj.name as string)) doctorIdSet.add(maybeId);
+          }
+        }
+
+        if (doctorIdSet.size > 0) {
+          try {
+            const ids = Array.from(doctorIdSet).slice(0, 20); // limit to avoid huge parallel requests
+            const promises = ids.map((id) =>
+              getDoctorById(id).catch(() => null)
+            );
+            const doctors = await Promise.all(promises);
+            const doctorMap = new Map<
+              string,
+              {
+                _id?: string;
+                id?: string;
+                name?: string;
+                specialty?: string;
+                workplace?: string;
+              }
+            >();
+            doctors.forEach((dResp) => {
+              if (!dResp) return;
+              // unwrap possible { success, data } or { data } shapes
+              const respObj = dResp as Record<string, unknown>;
+              const payload =
+                respObj.data && typeof respObj.data === "object"
+                  ? (respObj.data as Record<string, unknown>)
+                  : (dResp as Record<string, unknown>);
+              const pid = (payload._id as string) || (payload.id as string);
+              if (pid) {
+                doctorMap.set(
+                  String(pid),
+                  payload as {
+                    _id?: string;
+                    id?: string;
+                    name?: string;
+                    specialty?: string;
+                    workplace?: string;
+                  }
+                );
+              }
+            });
+
+            const enriched = finalList.map((a) => {
+              const did = a.doctorId;
+              if (!did) return a;
+              const id =
+                typeof did === "string"
+                  ? did
+                  : (did as { _id?: string })._id ||
+                    (did as { id?: string }).id;
+              const doc = id ? doctorMap.get(String(id)) : null;
+              if (doc) {
+                return {
+                  ...a,
+                  doctorId: {
+                    _id: doc._id || (doc as { id?: string }).id,
+                    name: doc.name,
+                    specialty: doc.specialty,
+                    workplace: doc.workplace,
+                  },
+                } as AppointmentItem;
+              }
+              return a;
+            });
+            setItems(enriched);
+          } catch {
+            // fallback to original list if anything fails
+            setItems(finalList);
+          }
+        } else {
+          setItems(finalList);
+        }
       } catch (e) {
         console.error(e);
         setError("Không tải được lịch sử lịch hẹn");
@@ -394,12 +544,28 @@ export default function AppointmentHistoryPage() {
     })();
   }, [user?._id]);
 
-  /* -------- filters -------- */
+  /* -------- quick filters & search -------- */
   const filtered = useMemo(() => {
-    const base =
-      activeTab === "all"
-        ? items
-        : items.filter((it) => (it.status as StatusKey) === activeTab);
+    // quick filter shortcuts mapping
+    const quickMap: Record<string, string | null> = {
+      all: "all",
+      waiting: "await_payment",
+      confirmed: "confirmed",
+      failed: "payment_failed",
+      cancelled: "cancelled",
+    };
+
+    let base = items;
+    // if activeTab is a quick filter key, map it; otherwise use existing activeTab matching status
+    if (activeTab === "all") base = items;
+    else if (activeTab in quickMap) {
+      const mapped = quickMap[activeTab as string];
+      if (mapped === "all") base = items;
+      else
+        base = items.filter((it) => (it.status || "").toLowerCase() === mapped);
+    } else {
+      base = items.filter((it) => (it.status as StatusKey) === activeTab);
+    }
     const norm = (s: string) => s.toLowerCase();
     const inRange = (iso?: string) => {
       if (!iso) return true;
@@ -408,33 +574,36 @@ export default function AppointmentHistoryPage() {
       if (to && d > to) return false;
       return true;
     };
-    const today = new Date().toISOString().slice(0, 10);
     return base.filter((it) => {
       const hay = `${it.doctorId?.name || ""} ${it.symptoms || ""} ${
         it.note || ""
       }`;
       const okQ = q ? norm(hay).includes(norm(q)) : true;
       const dateKey = it.scheduleId?.date || it.updatedAt;
-      // If appointment has a schedule date, only include today or future dates
-      const scheduleDate = it.scheduleId?.date;
-      const isNotPast = scheduleDate ? scheduleDate >= today : true;
-      return okQ && inRange(dateKey) && isNotPast;
+
+      // Show all appointments regardless of date - this is history after all!
+      // Only apply date range filter if user specifically set from/to dates
+      return okQ && inRange(dateKey);
     });
   }, [items, activeTab, q, from, to]);
 
   const groups = useMemo(() => {
     const map: Record<string, AppointmentItem[]> = {};
     filtered.slice(0, limit).forEach((it) => {
-      const key = (it.scheduleId?.date || it.updatedAt).slice(0, 10);
+      const key = toDateKeyTZ(it.scheduleId?.date || it.updatedAt || "");
       (map[key] ||= []).push(it);
     });
     Object.values(map).forEach((list) =>
-      list.sort((a, b) =>
-        (a.scheduleId?.startTime ?? "").localeCompare(
+      list.sort((a, b) => {
+        const pa = statusPriority(a.status as string);
+        const pb = statusPriority(b.status as string);
+        if (pa !== pb) return pa - pb;
+        return (a.scheduleId?.startTime ?? "").localeCompare(
           b.scheduleId?.startTime ?? ""
-        )
-      )
+        );
+      })
     );
+    // sort group keys newest first
     return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
   }, [filtered, limit]);
 
@@ -555,7 +724,7 @@ h2{margin:0 0 12px}
   return (
     <div className="min-h-[70vh] bg-slate-50">
       {/* Header brand gradient (giữ tông của hệ thống) */}
-      <div className="bg-gradient-to-r from-blue-500 to-teal-400 text-white">
+      <div className="bg-teal-500 text-white">
         <div className="mx-auto max-w-6xl px-4 py-8">
           <h1 className="text-2xl sm:text-3xl font-bold">
             Lịch sử & tình trạng lịch hẹn
@@ -605,7 +774,7 @@ h2{margin:0 0 12px}
                       "h-9 whitespace-nowrap rounded-full px-3 text-sm transition",
                       "ring-1 ring-slate-200",
                       isActive
-                        ? "bg-gradient-to-r from-blue-500 to-teal-400 text-white ring-teal-600 shadow-sm"
+                        ? "bg-teal-500 text-white ring-teal-600 shadow-sm"
                         : "bg-white text-slate-700 hover:bg-slate-50",
                     ].join(" ")}
                   >
@@ -613,6 +782,29 @@ h2{margin:0 0 12px}
                   </button>
                 );
               })}
+
+              {/* Quick Filters */}
+              <div className="ml-3 flex items-center gap-2">
+                {[
+                  { key: "all", label: "All" },
+                  { key: "waiting", label: "Chờ thanh toán" },
+                  { key: "confirmed", label: "Xác nhận" },
+                  { key: "failed", label: "Thất bại" },
+                  { key: "cancelled", label: "Hủy" },
+                ].map((qf) => (
+                  <button
+                    key={qf.key}
+                    onClick={() => setActiveTab(qf.key as TabKey)}
+                    className={`h-8 rounded-full px-3 text-sm ring-1 ring-slate-200 ${
+                      activeTab === qf.key
+                        ? "bg-teal-600 text-white"
+                        : "bg-white text-slate-700 hover:bg-slate-50"
+                    }`}
+                  >
+                    {qf.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Row 2: Tìm kiếm + khoảng ngày + Export */}
@@ -726,7 +918,7 @@ h2{margin:0 0 12px}
               <section key={day}>
                 {/* sticky date chip */}
                 <div className="sticky top-[64px] -ml-1 mb-3 w-max rounded-full bg-white/80 px-3 py-1 text-sm font-medium text-slate-700 ring-1 ring-slate-200 backdrop-blur">
-                  {formatDate(day)}{" "}
+                  {headerDisplayFromKey(day)}{" "}
                   <span className="text-xs text-slate-400">
                     • {list.length} lịch hẹn
                   </span>
@@ -764,7 +956,15 @@ h2{margin:0 0 12px}
                                   <div className="font-medium text-slate-900">
                                     {it.doctorId?.name || "Bác sĩ"}
                                   </div>
-                                  <div className="text-xs text-slate-600">
+                                  <div
+                                    className={`text-xs text-slate-600 ${
+                                      it.status === "payment_failed" ||
+                                      it.status === "payment_overdue" ||
+                                      it.status === "cancelled"
+                                        ? "opacity-70"
+                                        : ""
+                                    }`}
+                                  >
                                     {[
                                       it.doctorId?.specialty,
                                       it.doctorId?.workplace,
@@ -777,8 +977,12 @@ h2{margin:0 0 12px}
 
                               {/* trạng thái */}
                               <span
-                                className={`ml-auto rounded-full px-2 py-1 text-xs font-medium ${meta.badge}`}
+                                className={`ml-auto inline-flex items-center gap-2 rounded-full px-2 py-1 text-xs font-semibold ${meta.badge}`}
                               >
+                                {(it.status === "payment_failed" ||
+                                  it.status === "payment_overdue") && (
+                                  <FaExclamationTriangle className="text-rose-600" />
+                                )}
                                 {meta.label}
                               </span>
 
@@ -917,6 +1121,14 @@ h2{margin:0 0 12px}
                               >
                                 Đặt lại
                               </a>
+                              {it.status === "completed" && (
+                                <a
+                                  href="/medical-records"
+                                  className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 ring-1 ring-slate-200 hover:bg-slate-50"
+                                >
+                                  Xem bệnh án
+                                </a>
+                              )}
 
                               {/* Patient quick reschedule request for confirmed but not started appointments */}
                               {it.status === "confirmed" && (

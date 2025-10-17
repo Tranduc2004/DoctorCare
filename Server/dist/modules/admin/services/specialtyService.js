@@ -58,7 +58,7 @@ class SpecialtyService {
         return __awaiter(this, void 0, void 0, function* () {
             return yield Specialty_1.default.find({
                 $text: { $search: query },
-                isActive: true
+                isActive: true,
             }).sort({ score: { $meta: "textScore" } });
         });
     }
@@ -71,7 +71,7 @@ class SpecialtyService {
     // Kiểm tra chuyên khoa có tồn tại không
     checkSpecialtyExists(name, excludeId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const query = { name: { $regex: new RegExp(`^${name}$`, 'i') } };
+            const query = { name: { $regex: new RegExp(`^${name}$`, "i") } };
             if (excludeId) {
                 query._id = { $ne: excludeId };
             }

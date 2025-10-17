@@ -1,318 +1,431 @@
 import React, { useEffect, useMemo, useState, useCallback } from "react";
+import "./services.css";
 import { Link } from "react-router-dom";
-import { serviceApi } from "../../../api/serviceApi";
+import { serviceApi, IService } from "../../../api/serviceApi";
 
-interface Service {
+type Service = {
   _id: string;
   name: string;
-  description: string;
-  price: number;
-  duration: number;
-  isActive: boolean;
-}
+  description?: string;
+  isActive?: boolean;
+  price?: number;
+  duration?: number;
+  imageUrl?: string;
+  thumbnailUrl?: string;
+  imagePublicId?: string;
+};
 
-const formatPrice = (price: number) =>
-  price > 0
-    ? new Intl.NumberFormat("vi-VN", {
-        style: "currency",
-        currency: "VND",
-      }).format(price)
-    : "Liên hệ";
-
-const ClockIcon = ({ className = "w-4 h-4" }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-  >
-    <path
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
-    />
-  </svg>
-);
-
-const StethoIcon = ({ className = "w-5 h-5" }) => (
-  <svg
-    className={className}
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-  >
-    <path
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      d="M6 8v4a4 4 0 008 0V7M6 8a2 2 0 11-4 0 2 2 0 014 0zm8 3h0M18 7a3 3 0 013 3v1a5 5 0 01-10 0V7"
-    />
-  </svg>
-);
-
-const SkeletonCard = () => (
-  <div className="bg-white/70 backdrop-blur border border-blue-100 rounded-2xl p-6 shadow-sm animate-pulse">
-    <div className="h-4 w-24 bg-slate-200 rounded mb-3" />
-    <div className="h-6 w-3/4 bg-slate-200 rounded mb-2" />
-    <div className="h-4 w-full bg-slate-100 rounded mb-2" />
-    <div className="h-4 w-2/3 bg-slate-100 rounded mb-6" />
-    <div className="flex items-center justify-between">
-      <div className="h-6 w-28 bg-slate-200 rounded" />
-      <div className="h-6 w-20 bg-slate-200 rounded" />
-    </div>
-    <div className="h-10 w-full bg-slate-200 rounded mt-4" />
-  </div>
-);
-
-const ServicesPage: React.FC = () => {
+export default function ServicesPage() {
   const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<
-    "name" | "price_asc" | "price_desc" | "duration"
-  >("name");
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const fetchServices = useCallback(async () => {
+  const load = useCallback(async () => {
     try {
       setLoading(true);
+      setErr(null);
       const data = await serviceApi.getActiveServices();
-      const mapped: Service[] = (data || []).map((s: any) => ({
+      const list: Service[] = (data || []).map((s: IService) => ({
         _id: s._id,
         name: s.name,
         description: s.description,
-        price: s.price,
-        duration: s.duration ?? 30,
         isActive: s.isActive,
+        price: s.price,
+        duration: s.duration,
+        imageUrl: s.imageUrl,
+        thumbnailUrl: s.thumbnailUrl,
+        imagePublicId: s.imagePublicId,
       }));
-      setServices(mapped);
-      setError(null);
-    } catch (err) {
-      console.error("Error fetching services:", err);
-      setError("Không thể tải danh sách dịch vụ. Vui lòng thử lại sau.");
+      setServices(list);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_e) {
+      setErr("Không thể tải danh sách dịch vụ. Vui lòng thử lại sau.");
     } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchServices();
-  }, [fetchServices]);
+    load();
+  }, [load]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    let list = services.filter(
-      (s) =>
-        !q ||
-        s.name.toLowerCase().includes(q) ||
-        (s.description || "").toLowerCase().includes(q)
+  // simple hook to trigger reveal when elements enter viewport
+  useEffect(() => {
+    const els = Array.from(document.querySelectorAll(".service-reveal"));
+    if (!els.length) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            (entry.target as HTMLElement).classList.add("is-visible");
+            io.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.12 }
     );
 
-    switch (sortBy) {
-      case "price_asc":
-        list = list.sort((a, b) => a.price - b.price);
-        break;
-      case "price_desc":
-        list = list.sort((a, b) => b.price - a.price);
-        break;
-      case "duration":
-        list = list.sort((a, b) => a.duration - b.duration);
-        break;
-      case "name":
-      default:
-        list = list.sort((a, b) => a.name.localeCompare(b.name, "vi"));
-    }
-    return list;
-  }, [services, search, sortBy]);
+    els.forEach((el, i) => {
+      // set a small stagger delay
+      (el as HTMLElement).style.setProperty("--delay", `${i * 80}ms`);
+      io.observe(el);
+    });
+
+    return () => io.disconnect();
+  }, [services]);
+
+  const visible = useMemo(
+    () => services.sort((a, b) => a.name.localeCompare(b.name, "vi")),
+    [services]
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-2/3 mb-12"></div>
+            <div className="space-y-12">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="space-y-8">
+                  <div className="h-6 bg-gray-200 rounded w-1/4"></div>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <div className="h-64 bg-gray-200 rounded-lg"></div>
+                    <div className="h-64 bg-gray-200 rounded-lg"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (err) {
+    return (
+      <div className="min-h-screen bg-gray-50 py-12">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-6">
+            <p className="text-red-800">{err}</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Group services by category
+  const generalServices = visible.filter(
+    (s) =>
+      s.name.toLowerCase().includes("khám") ||
+      s.name.toLowerCase().includes("tổng quát") ||
+      s.name.toLowerCase().includes("routine") ||
+      s.name.toLowerCase().includes("check")
+  );
+
+  const vaccineServices = visible.filter(
+    (s) =>
+      s.name.toLowerCase().includes("tiêm") ||
+      s.name.toLowerCase().includes("vaccine") ||
+      s.name.toLowerCase().includes("vaccination")
+  );
+
+  const specialistServices = visible.filter(
+    (s) => !generalServices.includes(s) && !vaccineServices.includes(s)
+  );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-teal-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-600 to-teal-500 text-white">
-        <div className="container mx-auto px-4 py-10">
-          <div className="flex items-center gap-3">
-            <div className="bg-white/20 rounded-xl p-2 ring-1 ring-white/30">
-              <StethoIcon className="w-6 h-6" />
-            </div>
-            <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight">
-              Dịch vụ y tế
-            </h1>
-          </div>
-          <p className="mt-2 text-white/90">
-            Chọn dịch vụ phù hợp – đặt lịch nhanh chóng, minh bạch chi phí.
-          </p>
-        </div>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      {/* Hero Banner Section - giống như hình */}
+      <div className="relative bg-teal-500 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="relative py-16 lg:py-20">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+              {/* Left Content */}
+              <div className="text-white">
+                <h1 className="text-4xl lg:text-5xl font-bold mb-6 leading-tight">
+                  DỊCH VỤ Y TẾ TOÀN DIỆN
+                </h1>
+                <p className="text-xl lg:text-2xl mb-8 text-blue-100 leading-relaxed">
+                  Khám phá và tận hưởng sự tiện lợi của dịch vụ y tế tại
+                  MediCare
+                </p>
 
-      {/* Controls */}
-      <div className="container mx-auto px-4 -mt-6">
-        <div className="bg-white rounded-2xl shadow-sm border border-blue-100 p-4 md:p-6">
-          <div className="flex flex-col md:flex-row gap-3 md:items-center md:justify-between">
-            <div className="flex-1 relative">
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Tìm theo tên/mô tả dịch vụ..."
-                className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all"
-              />
-              <svg
-                className="w-5 h-5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-              >
-                <path
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M21 21l-6-6m2-5a7 7 0 10-14 0 7 7 0 0014 0z"
-                />
-              </svg>
-            </div>
+                {/* Contact Info */}
+                <div className="mb-8">
+                  <p className="text-lg mb-4 text-blue-100">
+                    Liên hệ{" "}
+                    <span className="font-bold text-white">chuyên gia</span> để
+                    tư vấn thêm
+                  </p>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+                    <div className="flex items-center space-x-3">
+                      <div className="bg-white/20 backdrop-blur-sm rounded-full p-2">
+                        <svg
+                          className="w-5 h-5 text-white"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"
+                          />
+                        </svg>
+                      </div>
+                      <span className="text-2xl font-bold text-white">
+                        19002115
+                      </span>
+                      <span className="text-blue-100">hoặc</span>
+                    </div>
+                    <button className="bg-orange-500 hover:bg-orange-600 text-white font-semibold px-6 py-3 rounded-full transition-colors duration-300 shadow-lg">
+                      Chat ngay
+                    </button>
+                  </div>
+                </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-600">Sắp xếp:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as any)}
-                className="border-2 border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-              >
-                <option value="name">Tên A–Z</option>
-                <option value="price_asc">Giá: Thấp → Cao</option>
-                <option value="price_desc">Giá: Cao → Thấp</option>
-                <option value="duration">Thời gian (ngắn → dài)</option>
-              </select>
-            </div>
-
-            <div className="hidden md:block text-sm text-slate-600">
-              Tổng: <span className="font-semibold">{filtered.length}</span>{" "}
-              dịch vụ
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="container mx-auto px-4 py-8">
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <SkeletonCard key={i} />
-            ))}
-          </div>
-        ) : error ? (
-          <div className="max-w-3xl mx-auto">
-            <div className="bg-rose-50 border border-rose-200 rounded-2xl p-6">
-              <h3 className="text-rose-700 font-semibold text-lg mb-1">
-                Không thể tải dịch vụ
-              </h3>
-              <p className="text-rose-600 mb-4">{error}</p>
-              <button
-                onClick={fetchServices}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-teal-500 text-white hover:from-blue-700 hover:to-teal-600 transition-all"
-              >
-                <svg
-                  className="w-4 h-4"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                >
-                  <path
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M4 4v6h6M20 20v-6h-6M20 4l-6 6M4 20l6-6"
-                  />
-                </svg>
-                Thử lại
-              </button>
-            </div>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="text-center py-16">
-            <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-blue-100 p-8">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-100 to-teal-100 border border-blue-200 mx-auto flex items-center justify-center mb-3">
-                <StethoIcon className="w-8 h-8 text-blue-600" />
+                {/* CTA Button */}
+                <button className="bg-cyan-500 hover:bg-cyan-600 text-white font-bold px-8 py-4 rounded-full text-lg transition-all duration-300 transform hover:scale-105 shadow-lg">
+                  Xem thêm
+                </button>
               </div>
-              <h3 className="text-lg font-semibold text-slate-900">
-                Không tìm thấy dịch vụ
-              </h3>
-              <p className="text-slate-600 mt-1">
-                Hãy thử từ khóa khác hoặc xem lại sau.
+
+              {/* Right Content - Doctor Images */}
+              <div className="relative hero-float">
+                <div className="flex justify-center lg:justify-end">
+                  <div className="relative">
+                    {/* Background decorative elements */}
+                    <div className="absolute -top-4 -left-4 w-24 h-24 bg-white/10 rounded-full blur-xl"></div>
+                    <div className="absolute -bottom-6 -right-6 w-32 h-32 bg-cyan-300/20 rounded-full blur-xl"></div>
+
+                    {/* Doctor image placeholder - replace with actual images */}
+                    <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl p-8 shadow-2xl service-reveal service-image-hover">
+                      <div className="flex items-center space-x-4">
+                        {/* Female Doctor */}
+                        <div className="w-24 h-24 bg-gradient-to-br from-pink-200 to-purple-300 rounded-full flex items-center justify-center shadow-lg">
+                          <svg
+                            className="w-12 h-12 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
+                          </svg>
+                        </div>
+
+                        {/* Male Doctor */}
+                        <div className="w-32 h-32 bg-gradient-to-br from-blue-200 to-cyan-300 rounded-full flex items-center justify-center shadow-lg">
+                          <svg
+                            className="w-16 h-16 text-white"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+
+                      <div className="mt-6 text-center service-reveal">
+                        <p className="text-white font-semibold">
+                          Đội Ngũ Bác Sĩ
+                        </p>
+                        <p className="text-blue-100 text-sm">
+                          Chuyên nghiệp & Giàu kinh nghiệm
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Decorative bottom wave */}
+        <div className="absolute bottom-0 left-0 right-0">
+          <svg
+            className="w-full h-12 text-gray-50"
+            fill="currentColor"
+            viewBox="0 0 1200 120"
+            preserveAspectRatio="none"
+          >
+            <path d="M321.39,56.44c58-10.79,114.16-30.13,172-41.86,82.39-16.72,168.19-17.73,250.45-.39C823.78,31,906.67,72,985.66,92.83c70.05,18.48,146.53,26.09,214.34,3V0H0V27.35A600.21,600.21,0,0,0,321.39,56.44Z" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Services Content Section */}
+      <div className="py-16">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* General Practice Section */}
+          {generalServices.length > 0 && (
+            <div className="mb-16">
+              <h2 className="text-2xl font-bold text-gray-900 mb-8">
+                Khám Tổng Quát
+              </h2>
+              <div className="space-y-8">
+                {generalServices.map((service, idx) => {
+                  const style: React.CSSProperties = {
+                    ["--delay" as unknown as string]: `${idx * 60}ms`,
+                  };
+                  return (
+                    <div
+                      key={service._id}
+                      className="service-reveal"
+                      style={style}
+                    >
+                      <ServiceCard service={service} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Vaccination Section */}
+          {vaccineServices.length > 0 && (
+            <div className="mb-16">
+              <h2 className="text-2xl font-bold text-gray-900 mb-8">
+                Tiêm Chủng
+              </h2>
+              <div className="space-y-8">
+                {vaccineServices.map((service, idx) => {
+                  const style: React.CSSProperties = {
+                    ["--delay" as unknown as string]: `${idx * 60}ms`,
+                  };
+                  return (
+                    <div
+                      key={service._id}
+                      className="service-reveal"
+                      style={style}
+                    >
+                      <ServiceCard service={service} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Specialist Care Section */}
+          {specialistServices.length > 0 && (
+            <div className="mb-16">
+              <h2 className="text-2xl font-bold text-gray-900 mb-8">
+                Chăm Sóc Chuyên Khoa
+              </h2>
+              <div className="space-y-8">
+                {specialistServices.map((service, idx) => {
+                  const style: React.CSSProperties = {
+                    ["--delay" as unknown as string]: `${idx * 60}ms`,
+                  };
+                  return (
+                    <div
+                      key={service._id}
+                      className="service-reveal"
+                      style={style}
+                    >
+                      <ServiceCard service={service} />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {visible.length === 0 && (
+            <div className="text-center py-12">
+              <p className="text-gray-500 text-lg">
+                Chưa có dịch vụ nào được cung cấp.
               </p>
             </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filtered.map((service) => (
-              <div
-                key={service._id}
-                className="group bg-white rounded-2xl border border-blue-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all overflow-hidden"
-              >
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="inline-flex items-center gap-2">
-                      <div className="p-2 rounded-xl bg-gradient-to-br from-blue-50 to-teal-50 border border-blue-100 text-blue-600">
-                        <StethoIcon />
-                      </div>
-                      <h2 className="text-lg font-bold text-slate-900">
-                        {service.name}
-                      </h2>
-                    </div>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full border ${
-                        service.isActive
-                          ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                          : "bg-slate-100 text-slate-600 border-slate-200"
-                      }`}
-                    >
-                      {service.isActive ? "Đang cung cấp" : "Tạm dừng"}
-                    </span>
-                  </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-                  <p className="text-slate-600 mb-4 line-clamp-3">
-                    {service.description}
-                  </p>
+// Service Card Component
+const ServiceCard: React.FC<{ service: Service }> = ({ service }) => {
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden hover:shadow-md transition-shadow duration-300">
+      <div className="grid grid-cols-1 lg:grid-cols-2">
+        {/* Content */}
+        <div className="p-8 lg:p-12 flex flex-col justify-center">
+          <h3 className="text-2xl font-bold text-gray-900 mb-4">
+            {service.name}
+          </h3>
+          <p className="text-gray-600 mb-6 leading-relaxed line-clamp-3">
+            {service.description ||
+              "Đánh giá sức khỏe toàn diện bao gồm khám thể chất và các xét nghiệm cơ bản."}
+          </p>
+          <Link
+            to={`/services/${service._id}`}
+            className="inline-flex items-center text-teal-700 hover:text-teal-500 font-medium transition-colors duration-200"
+          >
+            Xem Chi Tiết
+            <svg
+              className="w-4 h-4 ml-2"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </Link>
+        </div>
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-blue-700 font-extrabold text-xl">
-                      {formatPrice(service.price)}
-                    </div>
-                    <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-teal-200 bg-teal-50 text-teal-700 text-sm">
-                      <ClockIcon />
-                      <span>{service.duration} phút</span>
-                    </div>
-                  </div>
-
-                  <Link
-                    to={`/services/${service._id}`}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-teal-500 text-white font-medium hover:from-blue-700 hover:to-teal-600 focus:ring-2 focus:ring-offset-2 focus:ring-blue-300 transition-all"
+        {/* Image */}
+        <div className="relative h-64 lg:h-auto">
+          {service.imageUrl ? (
+            <img
+              src={service.imageUrl}
+              alt={service.name}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-teal-100 to-blue-100 flex items-center justify-center">
+              <div className="text-center">
+                <div className="w-16 h-16 bg-teal-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg
+                    className="w-8 h-8 text-teal-600"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
                   >
-                    Xem chi tiết
-                    <svg
-                      className="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                    >
-                      <path
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="M9 5l7 7-7 7"
-                      />
-                    </svg>
-                  </Link>
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                    />
+                  </svg>
                 </div>
-                <div className="h-1 w-full bg-gradient-to-r from-blue-600 to-teal-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <p className="text-teal-600 font-medium">Dịch Vụ Y Tế</p>
               </div>
-            ))}
-          </div>
-        )}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
 };
-
-export default ServicesPage;

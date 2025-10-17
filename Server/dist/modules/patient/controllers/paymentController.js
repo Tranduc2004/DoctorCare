@@ -12,7 +12,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.refundPayment = exports.getPaymentStatus = exports.getPaymentHistory = exports.createFinalInvoice = exports.processPayment = exports.createConsultationInvoice = void 0;
+exports.handlePayosWebhook = exports.generateBankTransferQr = exports.getVNPayPaymentStatus = exports.confirmVNPayFromClient = exports.handleVNPayReturn = exports.debugCreatePayosLink = exports.createPayosLink = exports.createVNPayPayment = exports.refundPayment = exports.getPaymentStatusByOrder = exports.getPaymentStatusByInvoice = exports.getPaymentStatus = exports.getPaymentHistory = exports.createFinalInvoice = exports.processPayment = exports.createConsultationInvoice = void 0;
 const Appointment_1 = __importDefault(require("../models/Appointment"));
 const Invoice_1 = __importDefault(require("../models/Invoice"));
 const Payment_1 = __importDefault(require("../models/Payment"));
@@ -20,6 +20,41 @@ const DoctorSchedule_1 = __importDefault(require("../../doctor/models/DoctorSche
 const computePricing_1 = require("../../pricing/services/computePricing");
 const appointment_1 = require("../../../shared/types/appointment");
 const payment_1 = require("../../../shared/constants/payment");
+const vnpayService_1 = require("../../../shared/services/vnpayService");
+const BankAccount_1 = __importDefault(require("../../shared/models/BankAccount"));
+// Note: static VietQR generation removed to enforce PayOS-first flow
+const crypto_1 = __importDefault(require("crypto"));
+// PayOS helpers
+const makeNumericOrderCode = () => Date.now();
+const truncateDesc = (s, max = 25) => {
+    if (!s)
+        return undefined;
+    return s.length > max ? s.slice(0, max) : s;
+};
+// Helper: load the PayOS SDK more defensively and return possible export keys.
+const loadPayOS = () => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const PayOSLib = require("@payos/node");
+        const exportKeys = PayOSLib && typeof PayOSLib === "object" ? Object.keys(PayOSLib) : [];
+        let PayOS = PayOSLib && (PayOSLib.default || PayOSLib);
+        // If not a constructor, try to find a function export on the module
+        if (typeof PayOS !== "function" &&
+            PayOSLib &&
+            typeof PayOSLib === "object") {
+            for (const k of Object.keys(PayOSLib)) {
+                if (typeof PayOSLib[k] === "function") {
+                    PayOS = PayOSLib[k];
+                    break;
+                }
+            }
+        }
+        return { PayOS, exportKeys };
+    }
+    catch (e) {
+        return { PayOS: null, exportKeys: [] };
+    }
+};
 // Helper to safely resolve doctorId to a plain string id. Accepts:
 // - a string ObjectId
 // - a populated mongoose document with an _id field
@@ -226,7 +261,27 @@ const createConsultationInvoice = (req, res) => __awaiter(void 0, void 0, void 0
                     const m = note.match(/\[Dịch vụ\]\s*([^|\n]+)/);
                     return ((_a = m === null || m === void 0 ? void 0 : m[1]) === null || _a === void 0 ? void 0 : _a.trim()) || "";
                 };
-                const serviceCode = parseService(appointment.note) || "";
+                const SERVICE_LABEL_MAP = {
+                    KHAM_CHUYEN_KHOA: "Khám chuyên khoa",
+                    KHAM_TONG_QUAT: "Khám tổng quát",
+                    GOI_DINH_KY: "Khám định kỳ",
+                    TU_VAN_DINH_DUONG: "Tư vấn dinh dưỡng",
+                    TU_VAN_TAM_LY: "Tư vấn tâm lý",
+                };
+                const rawSvcFromType = appointment.serviceType
+                    ? SERVICE_LABEL_MAP[String(appointment.serviceType)] ||
+                        String(appointment.serviceType)
+                    : "";
+                const fromNote = parseService(appointment.note) || "";
+                const normalizeServiceLabel = (s) => {
+                    if (!s)
+                        return "";
+                    const idx = s.indexOf("(");
+                    return (idx >= 0 ? s.slice(0, idx) : s).trim();
+                };
+                const serviceCode = normalizeServiceLabel(rawSvcFromType) ||
+                    normalizeServiceLabel(fromNote) ||
+                    "";
                 const durationMin = 45; // default duration in minutes when unknown
                 const startAt = appointment.appointmentDate && appointment.appointmentTime
                     ? new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}:00`).toISOString()
@@ -508,7 +563,27 @@ const getPaymentStatus = (req, res) => __awaiter(void 0, void 0, void 0, functio
                     const m = note.match(/\[Dịch vụ\]\s*([^|\n]+)/);
                     return ((_a = m === null || m === void 0 ? void 0 : m[1]) === null || _a === void 0 ? void 0 : _a.trim()) || "";
                 };
-                const serviceCode = parseService(appointment.note) || "";
+                const SERVICE_LABEL_MAP = {
+                    KHAM_CHUYEN_KHOA: "Khám chuyên khoa",
+                    KHAM_TONG_QUAT: "Khám tổng quát",
+                    GOI_DINH_KY: "Khám định kỳ",
+                    TU_VAN_DINH_DUONG: "Tư vấn dinh dưỡng",
+                    TU_VAN_TAM_LY: "Tư vấn tâm lý",
+                };
+                const rawSvcFromType = appointment.serviceType
+                    ? SERVICE_LABEL_MAP[String(appointment.serviceType)] ||
+                        String(appointment.serviceType)
+                    : "";
+                const fromNote = parseService(appointment.note) || "";
+                const normalizeServiceLabel = (s) => {
+                    if (!s)
+                        return "";
+                    const idx = s.indexOf("(");
+                    return (idx >= 0 ? s.slice(0, idx) : s).trim();
+                };
+                const serviceCode = normalizeServiceLabel(rawSvcFromType) ||
+                    normalizeServiceLabel(fromNote) ||
+                    "";
                 const durationMin = 45; // fallback when unknown
                 const startAt = appointment.appointmentDate && appointment.appointmentTime
                     ? new Date(`${appointment.appointmentDate}T${appointment.appointmentTime}:00`).toISOString()
@@ -608,7 +683,6 @@ const getPaymentStatus = (req, res) => __awaiter(void 0, void 0, void 0, functio
                 }
             }
         }
-        console.debug(`getPaymentStatus: appointment=${appointmentId} invoices=${invoices.length} payments=${payments.length}`);
         res.json({
             appointment,
             invoices,
@@ -624,6 +698,49 @@ const getPaymentStatus = (req, res) => __awaiter(void 0, void 0, void 0, functio
     }
 });
 exports.getPaymentStatus = getPaymentStatus;
+// Get payment status by invoice id
+const getPaymentStatusByInvoice = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { invoiceId } = req.params;
+        const invoice = yield Invoice_1.default.findById(invoiceId).populate("appointmentId");
+        if (!invoice)
+            return res.status(404).json({ message: "Invoice not found" });
+        const payment = yield Payment_1.default.findOne({ invoiceId: invoice._id });
+        res.json({ invoice, payment, appointment: invoice.appointmentId });
+    }
+    catch (err) {
+        const e = err;
+        console.error("Error getting payment status by invoice:", e);
+        res.status(500).json({ message: "Internal error", error: e.message });
+    }
+});
+exports.getPaymentStatusByInvoice = getPaymentStatusByInvoice;
+// Get payment status by PayOS order code (payosOrderId) or paymentLinkId
+const getPaymentStatusByOrder = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { orderCode } = req.params;
+        if (!orderCode)
+            return res.status(400).json({ message: "Missing order code" });
+        // Find invoice by saved payosOrderId or any stored payment link id in raw fields
+        const invoice = yield Invoice_1.default.findOne({
+            $or: [
+                { payosOrderId: String(orderCode) },
+                { paymentLinkId: String(orderCode) },
+                { "raw.paymentLinkId": String(orderCode) },
+            ],
+        }).populate("appointmentId");
+        if (!invoice)
+            return res.status(404).json({ message: "Invoice not found" });
+        const payment = yield Payment_1.default.findOne({ invoiceId: invoice._id });
+        res.json({ invoice, payment, appointment: invoice.appointmentId });
+    }
+    catch (err) {
+        const e = err;
+        console.error("Error getting payment status by order:", e);
+        res.status(500).json({ message: "Internal error", error: e.message });
+    }
+});
+exports.getPaymentStatusByOrder = getPaymentStatusByOrder;
 // Refund payment
 const refundPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -658,3 +775,1048 @@ const refundPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* 
     }
 });
 exports.refundPayment = refundPayment;
+// VNPay Integration
+// Create VNPay payment URL
+const createVNPayPayment = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { appointmentId, invoiceId } = req.body;
+        const appointment = yield Appointment_1.default.findById(appointmentId);
+        if (!appointment) {
+            return res.status(404).json({ message: "Không tìm thấy lịch hẹn" });
+        }
+        const invoice = yield Invoice_1.default.findById(invoiceId);
+        if (!invoice) {
+            return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+        }
+        // Check if payment is still valid (not expired)
+        const now = new Date();
+        if (appointment.status === appointment_1.AppointmentStatus.PAYMENT_OVERDUE ||
+            (appointment.holdExpiresAt && appointment.holdExpiresAt <= now) ||
+            (invoice.dueDate && invoice.dueDate <= now)) {
+            return res
+                .status(400)
+                .json({ message: "Hết thời gian thanh toán. Đơn đặt bị quá hạn." });
+        }
+        // Generate unique transaction reference
+        const txnRef = vnpayService_1.vnpayService.generateTxnRef(appointmentId);
+        // Get client IP
+        const clientIp = vnpayService_1.vnpayService.getClientIpAddress(req);
+        console.log("VNPay Payment Parameters:", {
+            amount: invoice.patientAmount,
+            txnRef,
+            appointmentId,
+            clientIp,
+            orderInfo: `Thanh toan lich kham - Ma: ${appointmentId}`,
+        });
+        // Create payment URL
+        // Allow overriding returnUrl from client in non-production for dev convenience
+        const requestedReturnUrl = (req.body && req.body.returnUrl) || undefined;
+        const returnUrlToUse = process.env.NODE_ENV !== "production" && requestedReturnUrl
+            ? String(requestedReturnUrl)
+            : undefined;
+        const paymentUrl = vnpayService_1.vnpayService.createPaymentUrl({
+            vnp_Amount: invoice.patientAmount,
+            vnp_TxnRef: txnRef,
+            vnp_OrderInfo: `Thanh toan lich kham - Ma: ${appointmentId}`,
+            vnp_IpAddr: clientIp,
+            vnp_Locale: "vn",
+            vnp_OrderType: "other",
+            vnp_ReturnUrl: returnUrlToUse,
+        });
+        console.log("Generated VNPay URL:", paymentUrl);
+        // Store transaction reference in invoice for later verification
+        invoice.vnpayTxnRef = txnRef;
+        yield invoice.save();
+        res.json({
+            message: "Tạo link thanh toán VNPay thành công",
+            paymentUrl,
+            txnRef,
+            amount: invoice.patientAmount,
+        });
+    }
+    catch (error) {
+        const err = error;
+        console.error("Error creating VNPay payment:", err);
+        res.status(500).json({
+            message: "Lỗi tạo link thanh toán VNPay",
+            error: err.message,
+        });
+    }
+});
+exports.createVNPayPayment = createVNPayPayment;
+// Create PayOS payment link (patient or admin can call)
+const createPayosLink = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        console.log("createPayosLink called", {
+            body: req.body,
+            PAYOS_CONFIG: {
+                clientId: !!process.env.PAYOS_CLIENT_ID,
+                apiKey: !!process.env.PAYOS_API_KEY,
+                checksum: !!process.env.PAYOS_CHECKSUM_KEY,
+            },
+        });
+        const { invoiceId, amount: amountInBody, description: descInBody, } = req.body || {};
+        const payosClientId = process.env.PAYOS_CLIENT_ID;
+        const payosApiKey = process.env.PAYOS_API_KEY;
+        const payosChecksum = process.env.PAYOS_CHECKSUM_KEY;
+        if (!payosClientId || !payosApiKey) {
+            return res
+                .status(400)
+                .json({ message: "PayOS credentials not configured" });
+        }
+        // resolve amount: prefer body, then invoice patientAmount
+        let amount = 0;
+        if (typeof amountInBody === "number" && Number.isFinite(amountInBody)) {
+            amount = Math.round(amountInBody);
+        }
+        else if (invoiceId) {
+            const inv = yield Invoice_1.default.findById(invoiceId);
+            if (!inv)
+                return res.status(404).json({ message: "Invoice not found" });
+            amount = Math.round(Number(inv.patientAmount || 0));
+        }
+        else {
+            return res.status(400).json({ message: "Missing amount or invoiceId" });
+        }
+        const orderCode = makeNumericOrderCode();
+        const description = truncateDesc(String(descInBody || `Thanh toan don ${orderCode}`));
+        // If an invoiceId was provided, try to reuse any existing PayOS order saved
+        // on the invoice to avoid creating duplicate orders in PayOS.
+        let existingInvoice = null;
+        if (invoiceId) {
+            existingInvoice = yield Invoice_1.default.findById(invoiceId);
+        }
+        // If the invoice already has a payosOrderId or paymentLinkId, try to return
+        // that instead of creating a new PayOS order. Also include invoiceId in
+        // the response so the client can poll by invoice reliably.
+        if (existingInvoice &&
+            (existingInvoice.payosOrderId || existingInvoice.paymentLinkId)) {
+            // Attempt to return any previously-stored raw PayOS data if available.
+            const rawData = (existingInvoice.raw && existingInvoice.raw.payos) || null;
+            return res.json({
+                invoiceId: existingInvoice._id,
+                orderCode: existingInvoice.payosOrderId || existingInvoice.paymentLinkId || null,
+                checkoutUrl: (rawData === null || rawData === void 0 ? void 0 : rawData.checkoutUrl) || null,
+                qrUrl: (rawData === null || rawData === void 0 ? void 0 : rawData.qrUrl) || null,
+                qrCode: (rawData === null || rawData === void 0 ? void 0 : rawData.qrCode) || null,
+                qrImage: (rawData === null || rawData === void 0 ? void 0 : rawData.qrImage) || null,
+                paymentLinkId: existingInvoice.paymentLinkId || null,
+                raw: rawData || null,
+                message: "Reused existing PayOS order",
+            });
+        }
+        // instantiate SDK
+        const { PayOS, exportKeys } = loadPayOS();
+        if (typeof PayOS !== "function") {
+            return res.status(500).json({
+                message: "PayOS SDK not usable",
+                exportKeys,
+            });
+        }
+        const payos = new PayOS(payosClientId, payosApiKey, payosChecksum);
+        const resp = yield payos.paymentRequests.create({
+            orderCode,
+            amount,
+            description,
+            returnUrl: process.env.FRONTEND_URL
+                ? `${process.env.FRONTEND_URL}/payment/success?oc=${orderCode}`
+                : undefined,
+            cancelUrl: process.env.FRONTEND_URL
+                ? `${process.env.FRONTEND_URL}/payment/cancel?oc=${orderCode}`
+                : undefined,
+            expiredAt: Math.floor((Date.now() + 15 * 60 * 1000) / 1000), // 15 minutes
+        });
+        // resp may include { code, desc, data } or direct data. Normalize.
+        const data = (resp && (resp.data || resp)) || {};
+        // Build a normalized qrUrl for clients: prefer explicit qr fields or checkoutUrl.
+        const pickQrCandidate = data.qrCode ||
+            data.qr ||
+            data.qr_code ||
+            data.qrImage ||
+            data.qr_image ||
+            data.checkoutUrl ||
+            data.checkout_url ||
+            data.url ||
+            data.paymentUrl ||
+            null;
+        const ensureDataUrl = (v) => {
+            if (!v || typeof v !== "string")
+                return null;
+            const s = v.trim();
+            if (s.startsWith("data:"))
+                return s;
+            if (/^https?:\/\//i.test(s))
+                return s;
+            const candidate = s.replace(/\s+/g, "");
+            if (/^[A-Za-z0-9+/=]+$/.test(candidate) && candidate.length > 100) {
+                return `data:image/png;base64,${candidate}`;
+            }
+            return null;
+        };
+        const qrUrl = ensureDataUrl(pickQrCandidate) ||
+            (typeof pickQrCandidate === "string" ? pickQrCandidate : null);
+        // persist orderCode to invoice if invoiceId provided. Use an atomic
+        // update so concurrent requests won't overwrite an existing payosOrderId.
+        if (invoiceId) {
+            try {
+                yield Invoice_1.default.findOneAndUpdate({ _id: invoiceId, payosOrderId: { $exists: false } }, { $set: { payosOrderId: String(orderCode), raw: { payos: data } } }, { new: true });
+            }
+            catch (e) {
+                console.warn("Failed to persist payosOrderId on invoice", e);
+            }
+        }
+        return res.json({
+            invoiceId: invoiceId || null,
+            orderCode,
+            checkoutUrl: data.checkoutUrl || data.checkout_url || data.url || data.paymentUrl,
+            qrUrl,
+            qrCode: data.qrCode ||
+                data.qr_code ||
+                data.qr ||
+                data.qrImage ||
+                data.qr_image ||
+                null,
+            qrImage: data.qrImage || data.qr_image || null,
+            paymentLinkId: data.paymentLinkId || data.payment_link_id || data.id || null,
+            raw: data,
+        });
+    }
+    catch (err) {
+        const e = err;
+        console.error("Error creating PayOS link:", e);
+        res
+            .status(500)
+            .json({ message: "Error creating PayOS link", error: e.message });
+    }
+});
+exports.createPayosLink = createPayosLink;
+// Temporary debug endpoint: attempt to instantiate PayOS SDK and create a minimal
+// payment link. Returns raw SDK response or detailed error to help diagnose 500s.
+const debugCreatePayosLink = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { invoiceId, amount: amountInBody } = req.body || {};
+        const payosClientId = process.env.PAYOS_CLIENT_ID;
+        const payosApiKey = process.env.PAYOS_API_KEY;
+        const payosChecksum = process.env.PAYOS_CHECKSUM_KEY;
+        if (!payosClientId || !payosApiKey) {
+            return res.status(503).json({
+                message: "PayOS not configured",
+                hasClientId: !!payosClientId,
+                hasApiKey: !!payosApiKey,
+                hasChecksum: !!payosChecksum,
+            });
+        }
+        // Try to require the SDK and inspect exports
+        const { PayOS, exportKeys } = loadPayOS();
+        if (typeof PayOS !== "function") {
+            return res.status(500).json({
+                message: "PayOS SDK shape unexpected",
+                typeofPayOS: typeof PayOS,
+                exportKeys,
+            });
+        }
+        const payos = new PayOS(payosClientId, payosApiKey, payosChecksum);
+        const amount = typeof amountInBody === "number" && Number.isFinite(amountInBody)
+            ? Math.round(amountInBody)
+            : 100; // small default for debug
+        const orderCode = makeNumericOrderCode();
+        const resp = yield payos.paymentRequests.create({
+            orderCode,
+            amount,
+            description: truncateDesc(`Debug create ${orderCode}`),
+            returnUrl: process.env.FRONTEND_URL,
+            cancelUrl: process.env.FRONTEND_URL,
+        });
+        return res.json({
+            message: "Debug create succeeded",
+            orderCode,
+            amount,
+            exportKeys,
+            resp,
+        });
+    }
+    catch (err) {
+        const e = err;
+        console.error("Debug create PayOS failed:", e && (e.stack || e));
+        return res.status(500).json({
+            message: "Debug create failed",
+            error: (e === null || e === void 0 ? void 0 : e.message) || String(e),
+            stack: (e === null || e === void 0 ? void 0 : e.stack) || undefined,
+        });
+    }
+});
+exports.debugCreatePayosLink = debugCreatePayosLink;
+// Handle VNPay return (callback from VNPay)
+const handleVNPayReturn = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const query = req.query;
+        // Verify the return data
+        const verificationResult = vnpayService_1.vnpayService.verifyReturnUrl(query);
+        if (!verificationResult.isValid) {
+            return res.status(400).json({
+                message: "Chữ ký không hợp lệ",
+                success: false,
+            });
+        }
+        const { vnp_TxnRef, vnp_TransactionNo, vnp_Amount, vnp_ResponseCode } = query;
+        // Find invoice by transaction reference
+        const invoice = yield Invoice_1.default.findOne({ vnpayTxnRef: vnp_TxnRef });
+        if (!invoice) {
+            return res.status(404).json({
+                message: "Không tìm thấy hóa đơn",
+                success: false,
+            });
+        }
+        const appointment = yield Appointment_1.default.findById(invoice.appointmentId);
+        if (!appointment) {
+            return res.status(404).json({
+                message: "Không tìm thấy lịch hẹn",
+                success: false,
+            });
+        }
+        if (verificationResult.isSuccess) {
+            // Payment successful
+            const payment = yield Payment_1.default.create({
+                appointmentId: appointment._id,
+                invoiceId: invoice._id,
+                amount: invoice.patientAmount,
+                status: appointment_1.PaymentStatus.CAPTURED,
+                paymentMethod: "vnpay",
+                transactionId: vnp_TransactionNo,
+                vnpayTxnRef: vnp_TxnRef,
+                vnpayResponseCode: vnp_ResponseCode,
+                capturedAt: new Date(),
+            });
+            // Update invoice
+            invoice.status = appointment_1.PaymentStatus.CAPTURED;
+            invoice.paidAt = new Date();
+            invoice.vnpayTransactionNo = vnp_TransactionNo;
+            yield invoice.save();
+            // Update appointment
+            appointment.status = appointment_1.AppointmentStatus.CONFIRMED;
+            appointment.paymentStatus = appointment_1.PaymentStatus.CAPTURED;
+            appointment.confirmedAt = new Date();
+            yield appointment.save();
+            // Redirect to VNPay return handler (client side)
+            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
+            return res.redirect(`${frontendUrl}/payment/vnpay/return?vnp_TxnRef=${vnp_TxnRef}&vnp_TransactionNo=${vnp_TransactionNo}&vnp_ResponseCode=${vnp_ResponseCode}&vnp_TransactionStatus=00`);
+        }
+        else {
+            // Payment failed
+            const payment = yield Payment_1.default.create({
+                appointmentId: appointment._id,
+                invoiceId: invoice._id,
+                amount: invoice.patientAmount,
+                status: appointment_1.PaymentStatus.FAILED,
+                paymentMethod: "vnpay",
+                transactionId: vnp_TransactionNo || "",
+                vnpayTxnRef: vnp_TxnRef,
+                vnpayResponseCode: vnp_ResponseCode,
+                failedAt: new Date(),
+            });
+            // Update invoice status
+            invoice.status = appointment_1.PaymentStatus.FAILED;
+            yield invoice.save();
+            // Redirect to VNPay return handler (client side)
+            const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
+            return res.redirect(`${frontendUrl}/payment/vnpay/return?vnp_TxnRef=${vnp_TxnRef}&vnp_ResponseCode=${vnp_ResponseCode}&vnp_TransactionStatus=01`);
+        }
+    }
+    catch (error) {
+        const err = error;
+        console.error("Error handling VNPay return:", err);
+        // Redirect to error page
+        const frontendUrl = process.env.FRONTEND_URL || "http://localhost:4000";
+        return res.redirect(`${frontendUrl}/payment/vnpay/return?error=system_error`);
+    }
+});
+exports.handleVNPayReturn = handleVNPayReturn;
+// Confirm VNPay result when VNPay redirects to client first.
+// The frontend should POST the VNPay query params (as JSON) to this endpoint
+// so the server can verify and record the payment.
+const confirmVNPayFromClient = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // Support two modes from client:
+        // 1) send parsed JSON body of params => req.body is an object
+        // 2) send raw query string as { rawQuery: 'vnp_Amount=...&vnp_SecureHash=...' }
+        const rawQuery = (req.body && req.body.rawQuery) || undefined;
+        let verificationResult;
+        if (rawQuery) {
+            verificationResult = vnpayService_1.vnpayService.verifyReturnRaw(rawQuery);
+        }
+        else {
+            const query = req.body;
+            verificationResult = vnpayService_1.vnpayService.verifyReturnUrl(query);
+        }
+        if (!verificationResult.isValid) {
+            return res
+                .status(400)
+                .json({ message: "Chữ ký không hợp lệ", success: false });
+        }
+        // unify params: verificationResult.data may be a map of decoded values (object)
+        // or a map of raw encoded values (when rawQuery used). Normalize access via getParam()
+        const params = verificationResult.data;
+        const rawMode = !!rawQuery;
+        const getParam = (k) => {
+            const v = params[k];
+            if (v === undefined || v === null)
+                return undefined;
+            if (rawMode && typeof v === "string") {
+                // v contains encoded value but with + for spaces (we normalized %20->+ earlier)
+                // Convert + back to %20 then decode
+                try {
+                    return decodeURIComponent(v.replace(/\+/g, "%20"));
+                }
+                catch (_a) {
+                    return v;
+                }
+            }
+            return v;
+        };
+        const vnp_TxnRef = getParam("vnp_TxnRef");
+        const vnp_TransactionNo = getParam("vnp_TransactionNo");
+        const vnp_Amount = getParam("vnp_Amount");
+        const vnp_ResponseCode = getParam("vnp_ResponseCode");
+        // Find invoice by transaction reference
+        const invoice = yield Invoice_1.default.findOne({ vnpayTxnRef: vnp_TxnRef });
+        if (!invoice) {
+            return res
+                .status(404)
+                .json({ message: "Không tìm thấy hóa đơn", success: false });
+        }
+        const appointment = yield Appointment_1.default.findById(invoice.appointmentId);
+        if (!appointment) {
+            return res
+                .status(404)
+                .json({ message: "Không tìm thấy lịch hẹn", success: false });
+        }
+        if (verificationResult.isSuccess) {
+            // Payment successful
+            const payment = yield Payment_1.default.create({
+                appointmentId: appointment._id,
+                invoiceId: invoice._id,
+                amount: invoice.patientAmount,
+                status: appointment_1.PaymentStatus.CAPTURED,
+                paymentMethod: "vnpay",
+                transactionId: vnp_TransactionNo,
+                vnpayTxnRef: vnp_TxnRef,
+                vnpayResponseCode: vnp_ResponseCode,
+                capturedAt: new Date(),
+            });
+            // Update invoice
+            invoice.status = appointment_1.PaymentStatus.CAPTURED;
+            invoice.paidAt = new Date();
+            invoice.vnpayTransactionNo = vnp_TransactionNo;
+            yield invoice.save();
+            // Update appointment
+            appointment.status = appointment_1.AppointmentStatus.CONFIRMED;
+            appointment.paymentStatus = appointment_1.PaymentStatus.CAPTURED;
+            appointment.confirmedAt = new Date();
+            yield appointment.save();
+            return res.json({
+                message: "Thanh toán thành công",
+                success: true,
+                payment,
+                invoice,
+                appointment,
+            });
+        }
+        else {
+            // Payment failed
+            const payment = yield Payment_1.default.create({
+                appointmentId: appointment._id,
+                invoiceId: invoice._id,
+                amount: invoice.patientAmount,
+                status: appointment_1.PaymentStatus.FAILED,
+                paymentMethod: "vnpay",
+                transactionId: vnp_TransactionNo || "",
+                vnpayTxnRef: vnp_TxnRef,
+                vnpayResponseCode: vnp_ResponseCode,
+                failedAt: new Date(),
+            });
+            // Update invoice status
+            invoice.status = appointment_1.PaymentStatus.FAILED;
+            yield invoice.save();
+            return res.json({
+                message: "Thanh toán không thành công",
+                success: false,
+                payment,
+                invoice,
+            });
+        }
+    }
+    catch (error) {
+        const err = error;
+        console.error("Error confirming VNPay from client:", err);
+        res
+            .status(500)
+            .json({ message: "Lỗi xử lý kết quả VNPay", error: err.message });
+    }
+});
+exports.confirmVNPayFromClient = confirmVNPayFromClient;
+// Get VNPay payment status
+const getVNPayPaymentStatus = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        const { txnRef } = req.params;
+        const invoice = yield Invoice_1.default.findOne({ vnpayTxnRef: txnRef }).populate("appointmentId");
+        if (!invoice) {
+            return res.status(404).json({ message: "Không tìm thấy giao dịch" });
+        }
+        const payment = yield Payment_1.default.findOne({
+            invoiceId: invoice._id,
+            paymentMethod: "vnpay",
+        });
+        res.json({
+            invoice,
+            payment,
+            appointment: invoice.appointmentId,
+            status: (payment === null || payment === void 0 ? void 0 : payment.status) || "pending",
+        });
+    }
+    catch (error) {
+        const err = error;
+        console.error("Error getting VNPay payment status:", err);
+        res.status(500).json({
+            message: "Lỗi lấy trạng thái thanh toán",
+            error: err.message,
+        });
+    }
+});
+exports.getVNPayPaymentStatus = getVNPayPaymentStatus;
+// Generate QR for bank transfer for a given invoice
+const generateBankTransferQr = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    try {
+        const { invoiceId, bankAccountId } = req.body;
+        const invoice = yield Invoice_1.default.findById(invoiceId);
+        if (!invoice)
+            return res.status(404).json({ message: "Không tìm thấy hóa đơn" });
+        // Choose bank account: provided or first active
+        let account = null;
+        if (bankAccountId) {
+            account = yield BankAccount_1.default.findById(bankAccountId);
+        }
+        if (!account) {
+            account = yield BankAccount_1.default.findOne({ active: true }).sort({
+                createdAt: 1,
+            });
+        }
+        if (!account)
+            return res
+                .status(404)
+                .json({ message: "Chưa cấu hình tài khoản nhận tiền" });
+        // Enforce PayOS-first: create a PayOS order and return its checkout information.
+        const payosClientId = process.env.PAYOS_CLIENT_ID;
+        const payosApiKey = process.env.PAYOS_API_KEY;
+        const payosChecksum = process.env.PAYOS_CHECKSUM_KEY;
+        if (!payosClientId || !payosApiKey) {
+            return res.status(503).json({
+                message: "PayOS không được cấu hình. Vui lòng liên hệ quản trị.",
+            });
+        }
+        try {
+            // If invoice already has a payosOrderId or paymentLinkId, avoid creating a
+            // new order in PayOS. Return the previously saved PayOS info if present.
+            if (invoice.payosOrderId || invoice.paymentLinkId) {
+                const existingRaw = ((_a = invoice.raw) === null || _a === void 0 ? void 0 : _a.payos) || null;
+                const pickQrCandidate = (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qrCode) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qr) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qr_code) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qrImage) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qr_image) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.checkoutUrl) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.checkout_url) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.url) ||
+                    (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.paymentUrl) ||
+                    null;
+                const ensureDataUrl = (v) => {
+                    if (!v || typeof v !== "string")
+                        return null;
+                    const s = v.trim();
+                    if (s.startsWith("data:"))
+                        return s;
+                    if (/^https?:\/\//i.test(s))
+                        return s;
+                    const candidate = s.replace(/\s+/g, "");
+                    if (/^[A-Za-z0-9+/=]+$/.test(candidate) && candidate.length > 100) {
+                        return `data:image/png;base64,${candidate}`;
+                    }
+                    return null;
+                };
+                const qrUrl = ensureDataUrl(pickQrCandidate) ||
+                    (typeof pickQrCandidate === "string" ? pickQrCandidate : null);
+                return res.json({
+                    invoiceId: invoice._id,
+                    account: {
+                        id: account._id,
+                        name: account.name,
+                        bankName: account.bankName,
+                        accountNumber: account.accountNumber,
+                        branch: account.branch,
+                        note: account.note,
+                    },
+                    amount: Math.round(Number(invoice.patientAmount || 0)),
+                    qrUrl,
+                    payosCheckout: {
+                        orderCode: invoice.payosOrderId || invoice.paymentLinkId || null,
+                        checkoutUrl: (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.checkoutUrl) || null,
+                        qrCode: (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qrCode) || null,
+                        qrImage: (existingRaw === null || existingRaw === void 0 ? void 0 : existingRaw.qrImage) || null,
+                        paymentLinkId: invoice.paymentLinkId || null,
+                        raw: existingRaw || null,
+                    },
+                    message: "Reused existing PayOS order",
+                });
+            }
+            const { PayOS, exportKeys } = loadPayOS();
+            if (typeof PayOS !== "function") {
+                return res
+                    .status(500)
+                    .json({ message: "PayOS SDK không khả dụng", exportKeys });
+            }
+            const payos = new PayOS(payosClientId, payosApiKey, payosChecksum);
+            const amount = Math.round(Number(invoice.patientAmount || 0));
+            if (!amount || amount <= 0) {
+                console.warn("Invalid invoice amount for PayOS order", {
+                    invoiceId: invoice._id,
+                    amount,
+                });
+                return res
+                    .status(400)
+                    .json({ message: "Số tiền hóa đơn không hợp lệ để tạo đơn PayOS" });
+            }
+            const orderCode = makeNumericOrderCode();
+            const description = truncateDesc(`Thanh toan lich kham - ${String(invoice._id)}`);
+            const resp = yield payos.paymentRequests.create({
+                orderCode,
+                amount,
+                description,
+                returnUrl: process.env.FRONTEND_URL
+                    ? `${process.env.FRONTEND_URL}/payment/success`
+                    : undefined,
+                cancelUrl: process.env.FRONTEND_URL
+                    ? `${process.env.FRONTEND_URL}/payment/cancel`
+                    : undefined,
+            });
+            const data = (resp && (resp.data || resp)) || {};
+            try {
+                const persisted = data.orderCode || orderCode;
+                // Atomically set payosOrderId/raw only if not present yet to avoid races
+                yield Invoice_1.default.findOneAndUpdate({ _id: invoice._id, payosOrderId: { $exists: false } }, { $set: { payosOrderId: String(persisted), raw: { payos: data } } }, { new: true });
+            }
+            catch (e) {
+                console.warn("Failed to persist payosOrderId on invoice", e);
+            }
+            // normalize payos fields to top-level for FE convenience
+            const pickQrCandidate = data.qrCode ||
+                data.qr ||
+                data.qr_code ||
+                data.qrImage ||
+                data.qr_image ||
+                data.checkoutUrl ||
+                data.checkout_url ||
+                data.url ||
+                data.paymentUrl ||
+                null;
+            const ensureDataUrl = (v) => {
+                if (!v || typeof v !== "string")
+                    return null;
+                const s = v.trim();
+                if (s.startsWith("data:"))
+                    return s;
+                if (/^https?:\/\//i.test(s))
+                    return s;
+                const candidate = s.replace(/\s+/g, "");
+                if (/^[A-Za-z0-9+/=]+$/.test(candidate) && candidate.length > 100) {
+                    return `data:image/png;base64,${candidate}`;
+                }
+                return null;
+            };
+            const qrUrl = ensureDataUrl(pickQrCandidate) ||
+                (typeof pickQrCandidate === "string" ? pickQrCandidate : null);
+            return res.json({
+                invoiceId: invoice._id,
+                account: {
+                    id: account._id,
+                    name: account.name,
+                    bankName: account.bankName,
+                    accountNumber: account.accountNumber,
+                    branch: account.branch,
+                    note: account.note,
+                },
+                amount,
+                qrUrl,
+                payosCheckout: {
+                    orderCode: data.orderCode || orderCode,
+                    checkoutUrl: data.checkoutUrl ||
+                        data.checkout_url ||
+                        data.url ||
+                        data.paymentUrl,
+                    qrCode: data.qrCode ||
+                        data.qr_code ||
+                        data.qr ||
+                        data.qrImage ||
+                        data.qr_image ||
+                        null,
+                    qrImage: data.qrImage || data.qr_image || null,
+                    paymentLinkId: data.paymentLinkId || data.payment_link_id || data.id || null,
+                    raw: data,
+                },
+            });
+        }
+        catch (e) {
+            console.error("PayOS createPaymentLink failed:", (e === null || e === void 0 ? void 0 : e.stack) || e);
+            // surface SDK error message for easier debugging in dev; keep generic in production
+            return res.status(500).json({
+                message: "Tạo đơn PayOS thất bại",
+                error: (e === null || e === void 0 ? void 0 : e.message) || String(e),
+            });
+        }
+    }
+    catch (err) {
+        const e = err;
+        console.error("Error generating bank transfer QR", e);
+        res
+            .status(500)
+            .json({ message: "Lỗi tạo mã QR chuyển khoản", error: e.message });
+    }
+});
+exports.generateBankTransferQr = generateBankTransferQr;
+// Handle PayOS webhook notifications
+const handlePayosWebhook = (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    try {
+        // For webhook verification we MUST NOT rely on PAYOS_API_KEY or PAYOS_CLIENT_ID.
+        // Use the shared secret PAYOS_CHECKSUM_KEY only (HMAC-SHA256). Providers often
+        // sign the exact JSON bytes they send; we try multiple canonicalizations below.
+        if (!process.env.PAYOS_CHECKSUM_KEY) {
+            console.error("PAYOS_CHECKSUM_KEY is not configured; cannot verify webhooks");
+            return res.status(200).json({ ok: true, note: "checksum key missing" });
+        }
+        let verified = null;
+        try {
+            // We intentionally avoid using PayOS SDK verify helpers because some SDK
+            // variants expect the SDK client or API key environment and may perform
+            // checks using clientId/apiKey. Use only HMAC checks below.
+            // Fallback: PayOS may include signature inside the JSON body
+            // (payload.signature) and sign the JSON of payload.data. Prefer that
+            // verification when available; otherwise fall back to header-based HMAC
+            // over the raw body.
+            const payload = req.body && typeof req.body === "object" ? req.body : {};
+            const dataForSign = payload.data && typeof payload.data === "object"
+                ? payload.data
+                : payload;
+            const signatureInBody = String(payload.signature || dataForSign.signature || "")
+                .replace(/^\s*(sha256=|sha256:|hmac=|hmac:)/i, "")
+                .trim()
+                .toLowerCase();
+            if (signatureInBody) {
+                // Multi-strategy verification for signatures placed inside the JSON body.
+                // Try the most likely variants in order and accept if any matches:
+                // 1) HMAC over the original raw JSON substring for `data` (preserve exact bytes)
+                // 2) HMAC over a minified version of JSON.stringify(payload.data) (no spaces)
+                // 3) HMAC over JSON.stringify(payload.data) (default)
+                const rawBodyStr = typeof req.rawBody === "string"
+                    ? req.rawBody
+                    : typeof req.rawBody === "object" && req.rawBody
+                        ? String(req.rawBody)
+                        : undefined;
+                const extractRawJsonField = (raw, fieldName) => {
+                    try {
+                        const re = new RegExp('"' +
+                            fieldName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&") +
+                            '"\\s*:');
+                        const keyMatch = raw.search(re);
+                        if (keyMatch < 0)
+                            return null;
+                        let colonIdx = raw.indexOf(":", keyMatch);
+                        if (colonIdx < 0)
+                            return null;
+                        let i = colonIdx + 1;
+                        while (i < raw.length && /[\s\n\r\t]/.test(raw[i]))
+                            i++;
+                        if (i >= raw.length)
+                            return null;
+                        const startChar = raw[i];
+                        if (startChar !== "{" && startChar !== "[" && startChar !== '"') {
+                            const m = raw.slice(i).match(/^[^,}\]]+/);
+                            return m ? m[0].trim() : null;
+                        }
+                        const open = startChar;
+                        const close = open === "{" ? "}" : open === "[" ? "]" : '"';
+                        let depth = open === '"' ? 0 : 1;
+                        let inString = open === '"';
+                        let escaped = false;
+                        let j = i;
+                        if (open === '"') {
+                            j = i + 1;
+                            while (j < raw.length) {
+                                const ch = raw[j];
+                                if (escaped) {
+                                    escaped = false;
+                                }
+                                else if (ch === "\\") {
+                                    escaped = true;
+                                }
+                                else if (ch === '"') {
+                                    j++;
+                                    break;
+                                }
+                                j++;
+                            }
+                            return raw.slice(i, j);
+                        }
+                        j = i + 1;
+                        for (; j < raw.length; j++) {
+                            const ch = raw[j];
+                            if (inString) {
+                                if (escaped) {
+                                    escaped = false;
+                                }
+                                else if (ch === "\\") {
+                                    escaped = true;
+                                }
+                                else if (ch === '"') {
+                                    inString = false;
+                                }
+                                continue;
+                            }
+                            if (ch === '"') {
+                                inString = true;
+                                continue;
+                            }
+                            if (ch === open)
+                                depth++;
+                            else if (ch === close) {
+                                depth--;
+                                if (depth === 0) {
+                                    j++;
+                                    break;
+                                }
+                            }
+                        }
+                        if (j > i)
+                            return raw.slice(i, j);
+                        return null;
+                    }
+                    catch (e) {
+                        return null;
+                    }
+                };
+                const candidates = [];
+                // candidate A: original raw substring (if available)
+                if (rawBodyStr) {
+                    const rawData = extractRawJsonField(rawBodyStr, "data");
+                    if (rawData) {
+                        candidates.push({ label: "raw", dataToSign: rawData });
+                    }
+                }
+                // candidate B: minified JSON.stringify(payload.data) (no spaces)
+                try {
+                    const minified = JSON.stringify(dataForSign);
+                    const minifiedNoSpaces = minified.replace(/\s+/g, "");
+                    candidates.push({
+                        label: "minified",
+                        dataToSign: minifiedNoSpaces,
+                    });
+                }
+                catch (e) {
+                    // ignore
+                }
+                // candidate (sorted keys) : canonicalized JSON with keys sorted
+                const stableStringifySorted = (v) => {
+                    if (v === null || v === undefined)
+                        return JSON.stringify(v);
+                    if (typeof v !== "object")
+                        return JSON.stringify(v);
+                    if (Array.isArray(v))
+                        return `[${v.map((i) => stableStringifySorted(i)).join(",")} ]`
+                            .replace(/\s+/g, " ")
+                            .replace(/, \]/, ",]");
+                    const keys = Object.keys(v).sort();
+                    const parts = [];
+                    for (const k of keys) {
+                        parts.push(`${JSON.stringify(k)}:${stableStringifySorted(v[k])}`);
+                    }
+                    return `{${parts.join(",")}}`;
+                };
+                try {
+                    const sorted = stableStringifySorted(dataForSign);
+                    candidates.push({ label: "sorted", dataToSign: sorted });
+                }
+                catch (e) {
+                    // ignore
+                }
+                // candidate C: JSON.stringify(payload.data) (normal)
+                try {
+                    const normal = JSON.stringify(dataForSign);
+                    candidates.push({ label: "stringify", dataToSign: normal });
+                }
+                catch (e) {
+                    // ignore
+                }
+                let matchedLabel = null;
+                for (const c of candidates) {
+                    try {
+                        const expected = crypto_1.default
+                            .createHmac("sha256", process.env.PAYOS_CHECKSUM_KEY || "")
+                            .update(c.dataToSign)
+                            .digest("hex");
+                        if (expected === signatureInBody) {
+                            matchedLabel = c.label;
+                            break;
+                        }
+                    }
+                    catch (e) {
+                        // continue
+                    }
+                }
+                if (!matchedLabel) {
+                    console.warn("PayOS webhook body-signature mismatch (no candidate matched)", {
+                        signatureInBody,
+                        attemptedCandidates: candidates.map((x) => x.label),
+                        rawBodyPreview: rawBodyStr ? rawBodyStr.slice(0, 1000) : null,
+                    });
+                    return res.status(200).json({ ok: true, note: "bad signature" });
+                }
+                console.info("PayOS webhook verified via body signature variant", matchedLabel);
+                verified = payload;
+            }
+            else {
+                // No signature in body: fallback to header-based HMAC over rawBody
+                const rawBody = req.rawBody || JSON.stringify(req.body || {});
+                const expected = crypto_1.default
+                    .createHmac("sha256", process.env.PAYOS_CHECKSUM_KEY || "")
+                    .update(rawBody)
+                    .digest("hex");
+                // Try multiple common header names that providers might use.
+                const possibleHeaderNames = [
+                    "x-payos-signature",
+                    "x-payos-checksum",
+                    "x-signature",
+                    "signature",
+                    "x-hub-signature",
+                    "x-hub-signature-256",
+                    "checksum",
+                ];
+                const headersLower = {};
+                for (const k of Object.keys(req.headers || {})) {
+                    headersLower[k.toLowerCase()] = req.headers[k];
+                }
+                let signatureHeader = "";
+                for (const name of possibleHeaderNames) {
+                    const v = headersLower[name];
+                    if (v) {
+                        signatureHeader = Array.isArray(v) ? v[0] : String(v);
+                        break;
+                    }
+                }
+                const normalizedHeader = String(signatureHeader || "")
+                    .replace(/^\s*(sha256=|sha256:|hmac=|hmac:)/i, "")
+                    .trim()
+                    .toLowerCase();
+                if (!normalizedHeader || normalizedHeader !== expected) {
+                    const bodyPreview = typeof rawBody === "string"
+                        ? rawBody.slice(0, 1000)
+                        : JSON.stringify(rawBody).slice(0, 1000);
+                    console.warn("PayOS webhook HMAC mismatch", {
+                        foundHeader: signatureHeader,
+                        normalizedHeader,
+                        expected,
+                        headersSample: possibleHeaderNames.reduce((acc, n) => {
+                            acc[n] = headersLower[n] || null;
+                            return acc;
+                        }, {}),
+                        rawBodyPreview: bodyPreview,
+                        rawBodyLength: typeof rawBody === "string" ? rawBody.length : undefined,
+                    });
+                    return res
+                        .status(200)
+                        .json({ ok: true, note: "verification failed" });
+                }
+                // header verified
+                verified = req.body;
+            }
+        }
+        catch (e) {
+            console.error("PayOS webhook verification failed:", e);
+            return res.status(200).json({ ok: true, note: "verification failed" });
+        }
+        // Normalize verified response into { code, data }
+        let code = "";
+        let data = {};
+        if (verified && typeof verified === "object") {
+            code = String(verified.code || verified.status || "");
+            data = verified.data || verified;
+        }
+        else {
+            data = (req.body && (req.body.data || req.body)) || {};
+        }
+        const orderCode = data.orderCode || data.order_code;
+        const paymentLinkId = data.paymentLinkId || data.payment_link_id || data.paymentId || data.id;
+        const transactionId = data.transactionId || data.txn || data.transaction_id || "";
+        // find invoice by saved orderCode
+        if (!orderCode) {
+            console.warn("PayOS webhook missing orderCode in verified payload", {
+                data,
+            });
+            return res.status(200).json({ ok: true, note: "invoice not found" });
+        }
+        const invoice = yield Invoice_1.default.findOne({ payosOrderId: String(orderCode) });
+        if (!invoice) {
+            console.warn("PayOS webhook: invoice not found for orderCode", orderCode);
+            return res.status(200).json({ ok: true, note: "invoice not found" });
+        }
+        const appt = yield Appointment_1.default.findById(invoice.appointmentId);
+        // Success when code === "00"
+        if (String(code) === "00") {
+            const txId = transactionId || paymentLinkId || "";
+            const existed = yield Payment_1.default.findOne({
+                invoiceId: invoice._id,
+                transactionId: txId,
+            });
+            if (!existed) {
+                yield Payment_1.default.create({
+                    appointmentId: invoice.appointmentId,
+                    invoiceId: invoice._id,
+                    amount: invoice.patientAmount,
+                    status: appointment_1.PaymentStatus.CAPTURED,
+                    paymentMethod: "payos",
+                    transactionId: txId,
+                    capturedAt: new Date(),
+                });
+            }
+            invoice.status = appointment_1.PaymentStatus.CAPTURED;
+            invoice.paidAt = new Date();
+            if (!invoice.paymentLinkId && paymentLinkId) {
+                invoice.paymentLinkId = String(paymentLinkId);
+            }
+            yield invoice.save();
+            if (appt) {
+                appt.status = appointment_1.AppointmentStatus.CONFIRMED;
+                appt.paymentStatus = appointment_1.PaymentStatus.CAPTURED;
+                appt.confirmedAt = new Date();
+                yield appt.save();
+            }
+            return res.status(200).json({ ok: true });
+        }
+        // Failure path
+        invoice.status = appointment_1.PaymentStatus.FAILED;
+        yield invoice.save();
+        yield Payment_1.default.create({
+            appointmentId: invoice.appointmentId,
+            invoiceId: invoice._id,
+            amount: invoice.patientAmount,
+            status: appointment_1.PaymentStatus.FAILED,
+            paymentMethod: "payos",
+            failedAt: new Date(),
+            transactionId: transactionId || "",
+        });
+        return res.status(200).json({ ok: true });
+    }
+    catch (e) {
+        console.error("PayOS webhook error:", e);
+        // still return 200 so PayOS won't retry aggressively
+        return res.status(200).json({ ok: true, note: "webhook exception" });
+    }
+});
+exports.handlePayosWebhook = handlePayosWebhook;

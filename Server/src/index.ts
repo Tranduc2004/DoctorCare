@@ -4,6 +4,16 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import http from "http";
+
+// Configure dotenv FIRST, before any other imports that might use env vars
+// Look for .env file in the project root
+dotenv.config({ path: path.resolve(__dirname, "../.env") });
+
+// Debug: Log if env file is loaded
+console.log("ENV file path:", path.resolve(__dirname, "../.env"));
+console.log("EMAIL_USER from env:", process.env.EMAIL_USER);
+console.log("EMAIL_PASS configured:", !!process.env.EMAIL_PASS);
+
 import { initSocket } from "./utils/socket";
 import { startExpiredInvoiceMonitor } from "./utils/markExpiredInvoices";
 
@@ -20,15 +30,22 @@ import {
 import pricingRoutes from "./modules/pricing/routes/pricingRoutes";
 import { verifyEmailTransport } from "./shared/utils";
 
-dotenv.config();
-
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+
+// Body parsing middleware
+app.use(
+  express.json({
+    verify: (req: any, res, buf) => {
+      // Store the raw body buffer for webhook signature verification
+      req.rawBody = buf;
+    },
+  })
+);
 app.use(express.urlencoded({ extended: true }));
 
 // Serve static files from uploads directory
@@ -37,6 +54,9 @@ app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 // Routes - Mỗi module có auth riêng
 app.use("/api/admin", adminRoutes);
 app.use("/api/patient", patientRoutes);
+// Alias: also expose patient routes without the /api prefix for compatibility
+// with external services configured to call /patient/... (e.g., PayOS webhook)
+app.use("/patient", patientRoutes);
 app.use("/api/doctor", doctorRoutes);
 
 // Shared routes (công khai)
@@ -73,8 +93,9 @@ app.use("*", (req, res) => {
 });
 
 mongoose
-  .connect(process.env.MONGO_URI as string)
+  .connect(process.env.MONGODB_URI as string)
   .then(async () => {
+    console.log("MONGODB_URI:", process.env.MONGODB_URI);
     console.log("Kết nối MongoDB thành công!");
 
     server.listen(PORT, () => {

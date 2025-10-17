@@ -14,6 +14,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getActiveSpecialties = exports.searchSpecialties = exports.hardDeleteSpecialty = exports.deleteSpecialty = exports.updateSpecialty = exports.createSpecialty = exports.getSpecialtyById = exports.getAllSpecialties = void 0;
 const specialtyService_1 = __importDefault(require("../services/specialtyService"));
+const cloudinary_1 = require("../../../shared/utils/cloudinary");
 // Lấy tất cả chuyên khoa
 const getAllSpecialties = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
@@ -86,9 +87,28 @@ const createSpecialty = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
             description: description.trim(),
         };
         const newSpecialty = yield specialtyService_1.default.createSpecialty(specialtyData);
+        // Upload ảnh nếu có
+        let imageData = null;
+        if (req.file) {
+            try {
+                imageData = yield (0, cloudinary_1.uploadSpecialtyImage)(req.file.path, newSpecialty._id);
+                // Cập nhật specialty với thông tin ảnh
+                yield specialtyService_1.default.updateSpecialty(newSpecialty._id, {
+                    imageUrl: imageData.url,
+                    imagePublicId: imageData.public_id,
+                    thumbnailUrl: imageData.thumbnail_url,
+                });
+            }
+            catch (imageError) {
+                console.error("Error uploading specialty image:", imageError);
+                // Không return error, vì specialty đã được tạo thành công
+            }
+        }
+        // Lấy specialty với thông tin ảnh đã cập nhật
+        const updatedSpecialty = yield specialtyService_1.default.getSpecialtyById(newSpecialty._id);
         res.status(201).json({
             success: true,
-            data: newSpecialty,
+            data: updatedSpecialty,
             message: "Tạo chuyên khoa thành công",
         });
     }
@@ -130,6 +150,33 @@ const updateSpecialty = (req, res, next) => __awaiter(void 0, void 0, void 0, fu
                     message: "Tên chuyên khoa đã tồn tại",
                 });
                 return;
+            }
+        }
+        // Lấy specialty hiện tại để kiểm tra ảnh cũ
+        const currentSpecialty = yield specialtyService_1.default.getSpecialtyById(id);
+        if (!currentSpecialty) {
+            res.status(404).json({
+                success: false,
+                message: "Không tìm thấy chuyên khoa",
+            });
+            return;
+        }
+        // Xử lý upload ảnh mới
+        if (req.file) {
+            try {
+                // Xóa ảnh cũ nếu có
+                if (currentSpecialty.imagePublicId) {
+                    yield (0, cloudinary_1.deleteImageByPublicId)(currentSpecialty.imagePublicId);
+                }
+                // Upload ảnh mới
+                const imageData = yield (0, cloudinary_1.uploadSpecialtyImage)(req.file.path, id);
+                updateData.imageUrl = imageData.url;
+                updateData.imagePublicId = imageData.public_id;
+                updateData.thumbnailUrl = imageData.thumbnail_url;
+            }
+            catch (imageError) {
+                console.error("Error uploading specialty image:", imageError);
+                // Tiếp tục update các trường khác
             }
         }
         const updatedSpecialty = yield specialtyService_1.default.updateSpecialty(id, updateData);
@@ -192,6 +239,16 @@ exports.deleteSpecialty = deleteSpecialty;
 const hardDeleteSpecialty = (req, res, next) => __awaiter(void 0, void 0, void 0, function* () {
     try {
         const { id } = req.params;
+        // Lấy thông tin specialty để xóa ảnh
+        const specialty = yield specialtyService_1.default.getSpecialtyById(id);
+        if (specialty && specialty.imagePublicId) {
+            try {
+                yield (0, cloudinary_1.deleteImageByPublicId)(specialty.imagePublicId);
+            }
+            catch (imageError) {
+                console.error("Error deleting specialty image:", imageError);
+            }
+        }
         const isDeleted = yield specialtyService_1.default.hardDeleteSpecialty(id);
         if (!isDeleted) {
             res.status(404).json({

@@ -5,6 +5,9 @@ import api from "../../../api/axiosConfig";
 import { paymentApi } from "../../../api/paymentApi";
 import { specialtyApi, ISpecialty } from "../../../api/specialtyApi";
 import ExpiryCountdown from "../../../components/ExpiryCountdown/ExpiryCountdown";
+import VNPayPayment from "../../../components/Patient/Payment/VNPayPayment";
+import BankTransferPayment from "./BankTransferPayment";
+import { DotLottieReact } from "@lottiefiles/dotlottie-react";
 // NOTE: avoid importing shared types here to keep this component resilient in editor environments
 
 type PaymentStatus =
@@ -146,11 +149,9 @@ const PaymentPage: React.FC = () => {
     queryKey: ["paymentStatus", appointmentId],
     queryFn: async () => {
       try {
-        console.log("Đang gọi API với appointmentId:", appointmentId);
         const response = await api.get(
           `/patient/payments/status/${appointmentId}`
         );
-        console.log("Kết quả API:", response.data);
         return response.data;
       } catch (err) {
         const error = err as { response?: { data?: { message?: string } } };
@@ -220,21 +221,17 @@ const PaymentPage: React.FC = () => {
       return;
     }
     try {
+      setIsProcessingPayment(true);
       const resp = await paymentApi.processPayment(
         invoice._id,
         "card",
         appointmentId
       );
       if (resp && resp.payment) {
-        alert("Thanh toán thành công");
+        // Show success modal (do not auto redirect to slip)
+        setShowSuccessModal(true);
         // refresh to show updated status
         await refetch?.();
-        try {
-          // navigate to printable slip page
-          window.location.href = `/appointments/${appointmentId}/slip`;
-        } catch {
-          // ignore
-        }
       } else {
         throw new Error(resp?.message || "Thanh toán thất bại");
       }
@@ -257,6 +254,8 @@ const PaymentPage: React.FC = () => {
         "Lỗi thanh toán: " +
           (error instanceof Error ? error.message : String(error))
       );
+    } finally {
+      setIsProcessingPayment(false);
     }
   };
   // ----- derive appointment/invoice state early so hooks and effects below run consistently -----
@@ -281,6 +280,12 @@ const PaymentPage: React.FC = () => {
     ? new Date(appointment.holdExpiresAt).getTime()
     : null;
   const holdRemainingMs = holdExpiresAt ? holdExpiresAt - now : null;
+
+  // Local UI state for processing/success
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  // payment method selector: 'vnpay' | 'qr'
+  const [selectedMethod, setSelectedMethod] = useState<"vnpay" | "qr">("vnpay");
 
   // Consider appointment-level overdue as authoritative: either server set status
   // to payment_overdue or the local hold timer expired.
@@ -390,6 +395,61 @@ const PaymentPage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
+      {/* Processing overlay shown during payment actions */}
+      {isProcessingPayment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-56 h-56 flex items-center justify-center">
+            <div className="w-48 h-48">
+              <DotLottieReact
+                src="https://lottie.host/69533610-ec9e-4652-a9e0-eec5b360f37b/YNNU0BrBD8.lottie"
+                loop
+                autoplay
+                style={{ width: "100%", height: "100%" }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Success modal (user clicks OK to go to slip) */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-md text-center">
+            <div className="flex justify-center mb-4">
+              <div className="w-48 h-48">
+                <DotLottieReact
+                  src="https://lottie.host/69533610-ec9e-4652-a9e0-eec5b360f37b/YNNU0BrBD8.lottie"
+                  loop
+                  autoplay
+                  style={{ width: "100%", height: "100%" }}
+                />
+              </div>
+            </div>
+            <h2 className="text-xl font-semibold text-green-700">
+              Thanh toán thành công
+            </h2>
+            <p className="mt-2 text-gray-600">
+              Cảm ơn bạn đã hoàn tất thanh toán.
+            </p>
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() =>
+                  (window.location.href = `/appointments/${appointmentId}/slip`)
+                }
+                className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-teal-600 text-white rounded-md hover:bg-teal-700"
+              >
+                Xem phiếu khám
+              </button>
+              <button
+                onClick={() => (window.location.href = "/")}
+                className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200"
+              >
+                Về trang chủ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-3xl mx-auto">
         {/* Appointment Info */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
@@ -584,15 +644,64 @@ const PaymentPage: React.FC = () => {
                     {invoice.patientAmount > 0 ? (
                       // Only allow clicking while hold is active (or when server didn't provide holdExpiresAt)
                       holdRemainingMs === null || holdRemainingMs > 0 ? (
-                        <button
-                          onClick={() => handlePayment(invoice)}
-                          disabled={processPayment.isPending || !!isOverdue}
-                          className="w-full bg-teal-600 hover:bg-teal-700 text-white font-medium py-3 px-4 rounded-lg disabled:opacity-50"
-                        >
-                          {processPayment.isPending
-                            ? "Đang xử lý..."
-                            : "Thanh toán ngay"}
-                        </button>
+                        <div className="space-y-4">
+                          {/* Payment method selector */}
+                          <div className="mb-4">
+                            <div className="flex gap-3">
+                              <button
+                                onClick={() => setSelectedMethod("vnpay")}
+                                className={`px-3 py-2 rounded-md ${
+                                  selectedMethod === "vnpay"
+                                    ? "bg-teal-600 text-white"
+                                    : "bg-gray-100"
+                                }`}
+                              >
+                                VNPay
+                              </button>
+                              <button
+                                onClick={() => setSelectedMethod("qr")}
+                                className={`px-3 py-2 rounded-md ${
+                                  selectedMethod === "qr"
+                                    ? "bg-teal-600 text-white"
+                                    : "bg-gray-100"
+                                }`}
+                              >
+                                Chuyển khoản (QR)
+                              </button>
+                            </div>
+                          </div>
+
+                          {selectedMethod === "vnpay" && (
+                            <VNPayPayment
+                              appointmentId={appointmentId!}
+                              invoice={invoice}
+                              onPaymentInitiated={() => {}}
+                              onError={(error) => {
+                                alert(`Lỗi thanh toán VNPay: ${error}`);
+                              }}
+                            />
+                          )}
+
+                          {selectedMethod === "qr" && (
+                            <BankTransferPayment invoiceId={invoice._id} />
+                          )}
+
+                          {/* Alternative: Manual Payment */}
+                          <div className="pt-4 border-t border-gray-200">
+                            <p className="text-sm text-gray-600 mb-3 text-center">
+                              Hoặc thanh toán thủ công
+                            </p>
+                            <button
+                              onClick={() => handlePayment(invoice)}
+                              disabled={processPayment.isPending || !!isOverdue}
+                              className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg disabled:opacity-50"
+                            >
+                              {processPayment.isPending
+                                ? "Đang xử lý..."
+                                : "Thanh toán thủ công"}
+                            </button>
+                          </div>
+                        </div>
                       ) : (
                         <div className="w-full rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-center text-red-700">
                           Đã quá thời gian thanh toán

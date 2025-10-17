@@ -17,6 +17,9 @@ import Specialties from "./pages/specialties/Specialties";
 import Services from "./pages/services/Services";
 import AdminAppointmentsPage from "./pages/appointments/Appointments";
 import InsuranceVerification from "./pages/insurance/InsuranceVerification";
+import MedicalRecordsPage from "./pages/medical-records/MedicalRecordsPage";
+import BankAccountsPage from "./pages/bank-accounts/BankAccounts";
+import PaymentsPage from "./pages/Payments/PaymentsPage";
 import "./App.css";
 
 // Protected Route Component
@@ -136,6 +139,26 @@ function App() {
               }
             />
             <Route
+              path="/payments"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <PaymentsPage />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/bank-accounts"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <BankAccountsPage />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="/services"
               element={
                 <ProtectedRoute>
@@ -151,6 +174,16 @@ function App() {
                 <ProtectedRoute>
                   <AdminLayout>
                     <InsuranceVerification />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/medical-records"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <MedicalRecordsPage />
                   </AdminLayout>
                 </ProtectedRoute>
               }

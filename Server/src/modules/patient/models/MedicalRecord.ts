@@ -5,7 +5,7 @@ export interface IMedicalRecord extends Document {
   appointmentId?: mongoose.Types.ObjectId;
   patient: mongoose.Types.ObjectId;
   doctor: mongoose.Types.ObjectId;
-  
+
   // A) Xác nhận & Hành chính
   appointmentCode?: string;
   consultationType: "online" | "offline";
@@ -19,7 +19,7 @@ export interface IMedicalRecord extends Document {
     emergencyContactName?: string;
     emergencyContactPhone?: string;
   };
-  
+
   // B) Sàng lọc nhanh
   quickScreening?: {
     identityVerified?: boolean;
@@ -42,7 +42,7 @@ export interface IMedicalRecord extends Document {
     };
     receptionNotes?: string;
   };
-  
+
   // Legacy fields for backward compatibility
   vitals?: {
     height?: number; // cm
@@ -57,7 +57,7 @@ export interface IMedicalRecord extends Document {
   currentMedications?: string;
   pregnancyStatus?: "yes" | "no" | "unknown";
   receptionNotes?: string;
-  
+
   // C) Lý do khám & Triệu chứng
   reasonForVisit: string;
   chiefComplaint: string;
@@ -77,7 +77,7 @@ export interface IMedicalRecord extends Document {
     triggers?: string;
     notes?: string;
   };
-  
+
   // Legacy fields for backward compatibility
   symptomLocation?: string;
   symptomOnset?: string;
@@ -85,7 +85,7 @@ export interface IMedicalRecord extends Document {
   aggravatingFactors?: string;
   relievingFactors?: string;
   attachments?: string[]; // URLs to images/files
-  
+
   // D) Tiền sử & Yếu tố liên quan
   medicalHistory?: {
     pastMedicalHistory?: string;
@@ -104,7 +104,7 @@ export interface IMedicalRecord extends Document {
   familyHistory?: string;
   socialHistory?: string;
   riskFactors?: string[];
-  
+
   // E) Khám lâm sàng
   generalExamination?: string;
   systemicExamination?: {
@@ -115,8 +115,21 @@ export interface IMedicalRecord extends Document {
     dermatological?: string;
     other?: string;
   };
+  clinicalExamination?: {
+    generalAppearance?: string;
+    consciousness?: string;
+    nutrition?: string;
+    skinMucosa?: string;
+    cardiovascular?: string;
+    respiratory?: string;
+    gastrointestinal?: string;
+    neurological?: string;
+    musculoskeletal?: string;
+    genitourinary?: string;
+    examinationNotes?: string;
+  };
   clinicalImages?: string[];
-  
+
   // F) Chỉ định cận lâm sàng
   paraclinicalIndications?: {
     laboratoryTests?: {
@@ -135,7 +148,7 @@ export interface IMedicalRecord extends Document {
     resultLocation?: string;
     attachedResults?: string[];
   };
-  
+
   // Legacy field for backward compatibility
   labTests?: {
     type: "lab" | "imaging" | "procedure";
@@ -144,15 +157,16 @@ export interface IMedicalRecord extends Document {
     notes?: string;
     estimatedCost?: number;
   }[];
-  
+
   // G) Đánh giá & Chẩn đoán
   preliminaryDiagnosis: string;
   icdCodes?: string[];
   differentialDiagnosis?: string;
   treatmentPlan?: string;
-  
+
   // Kết quả cuối cùng
   diagnosis: string;
+  finalDiagnosis?: string; // Add finalDiagnosis field for compatibility
   treatment: string;
   prescription?: {
     medications?: Array<{
@@ -169,7 +183,7 @@ export interface IMedicalRecord extends Document {
     prescriptionPdfUrl?: string;
     notes?: string;
   };
-  
+
   // Theo dõi & an toàn
   followUpCare?: {
     instructions?: string;
@@ -180,18 +194,18 @@ export interface IMedicalRecord extends Document {
     };
     emergencyContacts?: string;
   };
-  
+
   // Legacy fields for backward compatibility
   followUpDate?: Date;
   followUpInstructions?: string;
-  
+
   // Tệp đính kèm & xuất bản
   documents?: {
     attachments?: string[];
     visitSummaryPdfUrl?: string;
     prescriptionPdfUrl?: string;
   };
-  
+
   // Nhật ký & kiểm soát
   audit?: Array<{
     action: string;
@@ -200,7 +214,7 @@ export interface IMedicalRecord extends Document {
     changes?: any;
   }>;
   locked?: boolean;
-  
+
   // Xác nhận từ admin
   confirmationAdmin?: {
     appointmentConfirmed?: boolean;
@@ -208,9 +222,14 @@ export interface IMedicalRecord extends Document {
     insuranceChecked?: boolean;
     consentSigned?: boolean;
   };
-  
+
   // Metadata
-  status: "draft" | "in_progress" | "prescription_issued" | "completed" | "final";
+  status:
+    | "draft"
+    | "in_progress"
+    | "prescription_issued"
+    | "completed"
+    | "final";
   createdAt?: Date;
   updatedAt?: Date;
   completedAt?: Date;
@@ -219,230 +238,264 @@ export interface IMedicalRecord extends Document {
   lastModifiedBy?: string;
 }
 
-const MedicalRecordSchema: Schema = new Schema({
-  // Liên kết cơ bản
-  appointmentId: { type: Schema.Types.ObjectId, ref: "Appointment" },
-  patient: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
-  doctor: { type: Schema.Types.ObjectId, ref: "Doctor", required: true },
-  
-  // A) Xác nhận & Hành chính
-  appointmentCode: String,
-  consultationType: { 
-    type: String, 
-    enum: ["online", "offline"], 
-    required: true 
-  },
-  patientInfo: {
-    fullName: { type: String, required: true },
-    birthYear: Number,
-    gender: { type: String, enum: ["male", "female", "other"] },
-    insuranceNumber: String,
-    insuranceValidFrom: String,
-    insuranceValidTo: String,
-    emergencyContactName: String,
-    emergencyContactPhone: String,
-  },
-  
-  // B) Sàng lọc nhanh
-  quickScreening: {
-    identityVerified: Boolean,
-    temperature: Number,
-    bloodPressure: String,
-    heartRate: Number,
-    weight: Number,
-    height: Number,
-    oxygenSaturation: Number,
-    bmi: Number,
-    allergies: {
-      hasAllergies: Boolean,
-      allergyList: String,
+const MedicalRecordSchema: Schema = new Schema(
+  {
+    // Liên kết cơ bản
+    appointmentId: {
+      type: Schema.Types.ObjectId,
+      ref: "Appointment",
+      unique: true,
+      sparse: true, // Allow null values but enforce uniqueness when present
     },
+    patient: { type: Schema.Types.ObjectId, ref: "Patient", required: true },
+    doctor: { type: Schema.Types.ObjectId, ref: "Doctor", required: true },
+
+    // A) Xác nhận & Hành chính
+    appointmentCode: String,
+    consultationType: {
+      type: String,
+      enum: ["online", "offline"],
+      required: true,
+    },
+    patientInfo: {
+      fullName: { type: String, required: true },
+      birthYear: Number,
+      gender: { type: String, enum: ["male", "female", "other"] },
+      insuranceNumber: String,
+      insuranceValidFrom: String,
+      insuranceValidTo: String,
+      emergencyContactName: String,
+      emergencyContactPhone: String,
+    },
+
+    // B) Sàng lọc nhanh
+    quickScreening: {
+      identityVerified: Boolean,
+      temperature: Number,
+      bloodPressure: String,
+      heartRate: Number,
+      weight: Number,
+      height: Number,
+      oxygenSaturation: Number,
+      bmi: Number,
+      allergies: {
+        hasAllergies: Boolean,
+        allergyList: String,
+      },
+      currentMedications: String,
+      pregnancyStatus: {
+        isPregnant: Boolean,
+        isBreastfeeding: Boolean,
+        gestationalWeeks: Number,
+      },
+      receptionNotes: String,
+    },
+
+    // Legacy fields for backward compatibility
+    vitals: {
+      height: Number,
+      weight: Number,
+      bmi: Number,
+      temperature: Number,
+      pulse: Number,
+      bloodPressure: String,
+      spO2: Number,
+    },
+    allergies: String,
     currentMedications: String,
-    pregnancyStatus: {
-      isPregnant: Boolean,
-      isBreastfeeding: Boolean,
-      gestationalWeeks: Number,
-    },
+    pregnancyStatus: { type: String, enum: ["yes", "no", "unknown"] },
     receptionNotes: String,
-  },
-  
-  // Legacy fields for backward compatibility
-  vitals: {
-    height: Number,
-    weight: Number,
-    bmi: Number,
-    temperature: Number,
-    pulse: Number,
-    bloodPressure: String,
-    spO2: Number,
-  },
-  allergies: String,
-  currentMedications: String,
-  pregnancyStatus: { type: String, enum: ["yes", "no", "unknown"] },
-  receptionNotes: String,
-  
-  // C) Lý do khám & Triệu chứng
-  reasonForVisit: { type: String, required: true },
-  chiefComplaint: { type: String, required: true },
-  symptomDetails: {
-    location: String,
-    onset: String,
-    duration: String,
-    severity: { type: Number, min: 0, max: 10 },
-    character: String,
+
+    // C) Lý do khám & Triệu chứng
+    reasonForVisit: { type: String, required: true },
+    chiefComplaint: { type: String, required: true },
+    symptomDetails: {
+      location: String,
+      onset: String,
+      duration: String,
+      severity: { type: Number, min: 0, max: 10 },
+      character: String,
+      aggravatingFactors: String,
+      relievingFactors: String,
+      associatedSymptoms: String,
+      previousTreatment: String,
+      painScale: { type: Number, min: 0, max: 10 },
+      functionalImpact: String,
+      timeline: String,
+      triggers: String,
+      notes: String,
+    },
+
+    // Legacy fields for backward compatibility
+    symptomLocation: String,
+    symptomOnset: String,
+    painScale: { type: Number, min: 0, max: 10 },
     aggravatingFactors: String,
     relievingFactors: String,
-    associatedSymptoms: String,
-    previousTreatment: String,
-    painScale: { type: Number, min: 0, max: 10 },
-    functionalImpact: String,
-    timeline: String,
-    triggers: String,
-    notes: String,
-  },
-  
-  // Legacy fields for backward compatibility
-  symptomLocation: String,
-  symptomOnset: String,
-  painScale: { type: Number, min: 0, max: 10 },
-  aggravatingFactors: String,
-  relievingFactors: String,
-  attachments: [String],
-  
-  // D) Tiền sử & Yếu tố liên quan
-  medicalHistory: {
-    pastMedicalHistory: String,
+    attachments: [String],
+
+    // D) Tiền sử & Yếu tố liên quan
+    medicalHistory: {
+      pastMedicalHistory: String,
+      surgicalHistory: String,
+      familyHistory: String,
+      socialHistory: {
+        smoking: String,
+        alcohol: String,
+        occupation: String,
+        other: String,
+      },
+      syncFromPrevious: Boolean,
+    },
+    // Legacy fields for backward compatibility
     surgicalHistory: String,
     familyHistory: String,
-    socialHistory: {
-      smoking: String,
-      alcohol: String,
-      occupation: String,
+    socialHistory: String,
+    riskFactors: [String],
+
+    // E) Khám lâm sàng
+    generalExamination: String,
+    systemicExamination: {
+      cardiovascular: String,
+      respiratory: String,
+      gastrointestinal: String,
+      neurological: String,
+      dermatological: String,
       other: String,
     },
-    syncFromPrevious: Boolean,
-  },
-  // Legacy fields for backward compatibility
-  surgicalHistory: String,
-  familyHistory: String,
-  socialHistory: String,
-  riskFactors: [String],
-  
-  // E) Khám lâm sàng
-  generalExamination: String,
-  systemicExamination: {
-    cardiovascular: String,
-    respiratory: String,
-    gastrointestinal: String,
-    neurological: String,
-    dermatological: String,
-    other: String,
-  },
-  clinicalImages: [String],
-  
-  // F) Chỉ định cận lâm sàng
-  paraclinicalIndications: {
-    laboratoryTests: {
-      tests: [String],
+    clinicalExamination: {
+      generalAppearance: String,
+      consciousness: String,
+      nutrition: String,
+      skinMucosa: String,
+      cardiovascular: String,
+      respiratory: String,
+      gastrointestinal: String,
+      neurological: String,
+      musculoskeletal: String,
+      genitourinary: String,
+      examinationNotes: String,
+    },
+    clinicalImages: [String],
+
+    // F) Chỉ định cận lâm sàng
+    paraclinicalIndications: {
+      laboratoryTests: {
+        tests: [String],
+        notes: String,
+      },
+      imagingStudies: {
+        studies: [String],
+        notes: String,
+      },
+      procedures: {
+        procedures: [String],
+        notes: String,
+      },
+      consultations: String,
+      resultLocation: String,
+      attachedResults: [String],
+    },
+
+    // Legacy field for backward compatibility
+    labTests: [
+      {
+        type: { type: String, enum: ["lab", "imaging", "procedure"] },
+        name: String,
+        priority: { type: String, enum: ["stat", "routine"] },
+        notes: String,
+        estimatedCost: Number,
+      },
+    ],
+
+    // G) Đánh giá & Chẩn đoán
+    preliminaryDiagnosis: { type: String, required: true },
+    icdCodes: [String],
+    differentialDiagnosis: String,
+    treatmentPlan: String,
+
+    // Kết quả cuối cùng
+    diagnosis: { type: String, required: true },
+    finalDiagnosis: String, // Add finalDiagnosis field for compatibility
+    treatment: { type: String, required: true },
+    prescription: {
+      medications: [
+        {
+          name: String,
+          strength: String,
+          form: String,
+          dosage: String,
+          frequency: String,
+          duration: Number,
+          quantity: Number,
+          instructions: String,
+        },
+      ],
+      prescriptionIssued: Boolean,
+      prescriptionPdfUrl: String,
       notes: String,
     },
-    imagingStudies: {
-      studies: [String],
-      notes: String,
-    },
-    procedures: {
-      procedures: [String],
-      notes: String,
-    },
-    consultations: String,
-    resultLocation: String,
-    attachedResults: [String],
-  },
-  
-  // Legacy field for backward compatibility
-  labTests: [{
-    type: { type: String, enum: ["lab", "imaging", "procedure"] },
-    name: String,
-    priority: { type: String, enum: ["stat", "routine"] },
-    notes: String,
-    estimatedCost: Number,
-  }],
-  
-  // G) Đánh giá & Chẩn đoán
-  preliminaryDiagnosis: { type: String, required: true },
-  icdCodes: [String],
-  differentialDiagnosis: String,
-  treatmentPlan: String,
-  
-  // Kết quả cuối cùng
-  diagnosis: { type: String, required: true },
-  treatment: { type: String, required: true },
-  prescription: {
-    medications: [{
-      name: String,
-      strength: String,
-      form: String,
-      dosage: String,
-      frequency: String,
-      duration: Number,
-      quantity: Number,
+
+    // Theo dõi & an toàn
+    followUpCare: {
       instructions: String,
-    }],
-    prescriptionIssued: Boolean,
-    prescriptionPdfUrl: String,
-    notes: String,
-  },
-  
-  // Theo dõi & an toàn
-  followUpCare: {
-    instructions: String,
-    warningSignsEducation: String,
-    nextAppointment: {
-      date: String,
-      notes: String,
+      warningSignsEducation: String,
+      nextAppointment: {
+        date: String,
+        notes: String,
+      },
+      emergencyContacts: String,
     },
-    emergencyContacts: String,
+
+    // Legacy fields for backward compatibility
+    followUpDate: Date,
+    followUpInstructions: String,
+
+    // Tệp đính kèm & xuất bản
+    documents: {
+      attachments: [String],
+      visitSummaryPdfUrl: String,
+      prescriptionPdfUrl: String,
+    },
+
+    // Nhật ký & kiểm soát
+    audit: [
+      {
+        action: String,
+        userId: String,
+        timestamp: String,
+        changes: Schema.Types.Mixed,
+      },
+    ],
+    locked: Boolean,
+
+    // Xác nhận từ admin
+    confirmationAdmin: {
+      appointmentConfirmed: Boolean,
+      identityVerified: Boolean,
+      insuranceChecked: Boolean,
+      consentSigned: Boolean,
+    },
+
+    // Metadata
+    status: {
+      type: String,
+      enum: [
+        "draft",
+        "in_progress",
+        "prescription_issued",
+        "completed",
+        "final",
+      ],
+      default: "draft",
+    },
+    completedAt: Date,
+    notes: String,
+    createdBy: String,
+    lastModifiedBy: String,
   },
-  
-  // Legacy fields for backward compatibility
-  followUpDate: Date,
-  followUpInstructions: String,
-  
-  // Tệp đính kèm & xuất bản
-  documents: {
-    attachments: [String],
-    visitSummaryPdfUrl: String,
-    prescriptionPdfUrl: String,
-  },
-  
-  // Nhật ký & kiểm soát
-  audit: [{
-    action: String,
-    userId: String,
-    timestamp: String,
-    changes: Schema.Types.Mixed,
-  }],
-  locked: Boolean,
-  
-  // Xác nhận từ admin
-  confirmationAdmin: {
-    appointmentConfirmed: Boolean,
-    identityVerified: Boolean,
-    insuranceChecked: Boolean,
-    consentSigned: Boolean,
-  },
-  
-  // Metadata
-  status: { 
-    type: String, 
-    enum: ["draft", "in_progress", "prescription_issued", "completed", "final"], 
-    default: "draft" 
-  },
-  completedAt: Date,
-  notes: String,
-  createdBy: String,
-  lastModifiedBy: String,
-}, { timestamps: true });
+  { timestamps: true }
+);
 
 export default mongoose.model<IMedicalRecord>(
   "MedicalRecord",

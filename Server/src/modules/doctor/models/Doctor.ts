@@ -9,6 +9,7 @@ export interface IDoctor extends Document {
   specialty: string;
   experience?: number;
   workplace?: string;
+  address?: string;
   license: string;
   description?: string;
   avatar?: string;
@@ -29,6 +30,7 @@ const DoctorSchema: Schema = new Schema(
     specialty: { type: String, required: true },
     experience: { type: Number },
     workplace: { type: String },
+    address: { type: String },
     // license is optional at initial registration; admin can request later if missing
     license: { type: String, required: false },
     description: { type: String },

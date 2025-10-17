@@ -63,10 +63,19 @@ const PaymentSchema = new mongoose_1.Schema({
     transactionId: String,
     authorizedAt: Date,
     capturedAt: Date,
+    failedAt: Date,
     refundedAt: Date,
     refundAmount: {
         type: Number,
         min: 0,
+    },
+    // VNPay fields
+    vnpayTxnRef: {
+        type: String,
+        index: true,
+    },
+    vnpayResponseCode: {
+        type: String,
     },
 }, { timestamps: true });
 exports.default = mongoose_1.default.model("Payment", PaymentSchema);

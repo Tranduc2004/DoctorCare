@@ -52,6 +52,7 @@ const DoctorSchema = new mongoose_1.Schema({
     specialty: { type: String, required: true },
     experience: { type: Number },
     workplace: { type: String },
+    address: { type: String },
     // license is optional at initial registration; admin can request later if missing
     license: { type: String, required: false },
     description: { type: String },

@@ -21,3 +21,4 @@ __exportStar(require("./authController"), exports);
 __exportStar(require("./scheduleController"), exports);
 __exportStar(require("./serviceController"), exports);
 __exportStar(require("./specialtyController"), exports);
+__exportStar(require("./medicalRecordController"), exports);

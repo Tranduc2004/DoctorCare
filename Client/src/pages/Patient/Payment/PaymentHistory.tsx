@@ -1,6 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { FileText, Download } from "lucide-react";
+import { FileText, Download, Search, Filter } from "lucide-react";
 import { paymentApi } from "../../../api/paymentApi";
 import PaymentDetailModal from "./PaymentDetailModal";
 
@@ -88,22 +88,27 @@ const RowSkeleton: React.FC = () => (
 );
 
 const PaymentHistory: React.FC = () => {
+  const [searchText, setSearchText] = useState("");
+  const [selectedStatus, setSelectedStatus] = useState<PaymentStatus | "all">(
+    "all"
+  );
+
   const { data: payments, isLoading } = useQuery<PaymentRow[]>({
     queryKey: ["payments"],
     queryFn: paymentApi.getHistory,
   });
 
-  const [selectedAppointmentId, setSelectedAppointmentId] = React.useState<
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState<
     string | null
   >(null);
-  const [selectedPaymentId, setSelectedPaymentId] = React.useState<
-    string | null
-  >(null);
-  const [modalOpen, setModalOpen] = React.useState(false);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(
+    null
+  );
+  const [modalOpen, setModalOpen] = useState(false);
 
   type DoctorShape = { name?: string; specialty?: string };
 
-  const getDoctorInfo = (p: PaymentRow) => {
+  const getDoctorInfo = useCallback((p: PaymentRow) => {
     const fromPayment =
       p.doctorId && typeof p.doctorId === "object"
         ? (p.doctorId as DoctorShape)
@@ -119,21 +124,83 @@ const PaymentHistory: React.FC = () => {
 
     const doc: DoctorShape = { ...(fromPayment || {}), ...(fromAppt || {}) };
     return { name: doc?.name || "-", specialty: doc?.specialty || "" };
-  };
+  }, []);
 
-  const rows = useMemo(() => payments || [], [payments]);
+  const rows = useMemo(() => {
+    if (!payments) return [];
+
+    return payments.filter((p) => {
+      // Filter by search text
+      if (searchText) {
+        const searchLower = searchText.toLowerCase();
+        const doctorInfo = getDoctorInfo(p);
+        const matchDesc = p.description?.toLowerCase().includes(searchLower);
+        const matchDoctor = doctorInfo.name.toLowerCase().includes(searchLower);
+        if (!matchDesc && !matchDoctor) return false;
+      }
+
+      // Filter by status
+      if (selectedStatus !== "all" && p.status !== selectedStatus) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [payments, searchText, selectedStatus, getDoctorInfo]);
 
   return (
     <>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 py-8">
+      <div className="min-h-screen bg-[#E8F7F5] py-8">
         <div className="max-w-6xl mx-auto px-4">
           <div className="bg-white rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
             {/* Header */}
-            <div className="bg-gradient-to-r from-blue-600 to-teal-500 p-6">
+            <div className="bg-teal-500 p-6">
               <h2 className="text-2xl font-bold text-white">
                 Lịch sử thanh toán
               </h2>
               <p className="text-white/80 mt-1">Xem tất cả giao dịch của bạn</p>
+            </div>
+
+            {/* Search & Filter */}
+            <div className="border-b border-slate-200 p-4">
+              <div className="flex flex-wrap gap-4">
+                {/* Search */}
+                <div className="flex-1 min-w-[240px]">
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={searchText}
+                      onChange={(e) => setSearchText(e.target.value)}
+                      placeholder="Tìm theo mô tả hoặc bác sĩ..."
+                      className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none"
+                    />
+                    <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+
+                {/* Status Filter */}
+                <div className="min-w-[200px]">
+                  <div className="relative">
+                    <select
+                      value={selectedStatus}
+                      onChange={(e) =>
+                        setSelectedStatus(
+                          e.target.value as PaymentStatus | "all"
+                        )
+                      }
+                      className="w-full pl-10 pr-4 py-2 rounded-lg border border-slate-200 focus:border-teal-500 focus:ring-1 focus:ring-teal-500 outline-none appearance-none"
+                    >
+                      <option value="all">Tất cả trạng thái</option>
+                      <option value="pending">Chờ thanh toán</option>
+                      <option value="captured">Đã thanh toán</option>
+                      <option value="authorized">Đã ủy quyền</option>
+                      <option value="refunded">Đã hoàn tiền</option>
+                      <option value="failed">Thất bại</option>
+                    </select>
+                    <Filter className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* Table */}
