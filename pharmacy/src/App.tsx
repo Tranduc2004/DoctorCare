@@ -3,6 +3,10 @@ import { BrowserRouter as Router, Route, Routes } from "react-router-dom";
 import HomePage from "./pages/Home/Home";
 import PharmacyLogin from "./pages/Auth/Login";
 import PharmacyRegister from "./pages/Auth/Register";
+import Categories from "./pages/Categories/Categories";
+import Products from "./pages/Products/Products";
+import Medicines from "./pages/Medicines";
+import Layout from "./components/Layout/Layout";
 import { AuthProvider } from "./contexts/AuthContext";
 import ProtectedRoute from "./components/ProtectedRoute";
 
@@ -20,7 +24,9 @@ function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <Layout>
+                  <HomePage />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -28,7 +34,9 @@ function App() {
             path="/pharmacy"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <Layout>
+                  <HomePage />
+                </Layout>
               </ProtectedRoute>
             }
           />
@@ -36,7 +44,39 @@ function App() {
             path="/dashboard"
             element={
               <ProtectedRoute>
-                <HomePage />
+                <Layout>
+                  <HomePage />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/products"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Products />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/categories"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Categories />
+                </Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/medicines"
+            element={
+              <ProtectedRoute>
+                <Layout>
+                  <Medicines />
+                </Layout>
               </ProtectedRoute>
             }
           />

@@ -6,3 +6,5 @@ export * from "./scheduleController";
 export * from "./serviceController";
 export * from "./specialtyController";
 export * from "./medicalRecordController";
+export * from "./medicineController";
+export * from "./categoryController";

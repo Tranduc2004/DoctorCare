@@ -29,7 +29,7 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     });
 
     // Generate token
-    const token = generateToken(user._id, user.role);
+    const token = generateToken(String(user._id), user.role);
 
     res.status(201).json({
       message: "Đăng ký thành công",
@@ -61,9 +61,18 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    // Check if user is active
+    // Check if user is active and approved
     if (!user.active) {
       res.status(401).json({ message: "Tài khoản đã bị vô hiệu hóa" });
+      return;
+    }
+
+    if (user.status !== "approved") {
+      let message = "Tài khoản chưa được duyệt";
+      if (user.status === "rejected") {
+        message = user.rejectedReason || "Tài khoản đã bị từ chối";
+      }
+      res.status(401).json({ message });
       return;
     }
 
@@ -75,7 +84,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     }
 
     // Generate token
-    const token = generateToken(user._id, user.role);
+    const token = generateToken(String(user._id), user.role);
 
     res.json({
       message: "Đăng nhập thành công",

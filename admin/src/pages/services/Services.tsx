@@ -1,6 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Plus, Search, Edit, Trash2, Clock, X } from "lucide-react";
+import {
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  Clock,
+  X,
+  CheckCircle,
+  Users,
+  TrendingUp,
+} from "lucide-react";
 import { useAdminAuth } from "../../hooks/useAdminAuth";
+import Pagination from "../../components/common/Pagination";
+import { usePagination } from "../../hooks/usePagination";
 import {
   adminGetAllServices,
   adminCreateService,
@@ -234,6 +246,19 @@ const Services: React.FC = () => {
     );
   }, [services, searchTerm]);
 
+  // Pagination
+  const {
+    currentPage,
+    totalPages,
+    paginatedData: paginatedServices,
+    totalItems,
+    itemsPerPage,
+    goToPage,
+  } = usePagination({
+    data: filteredServices,
+    itemsPerPage: 8,
+  });
+
   const resetForm = () => {
     setFormData({ name: "", description: "", price: 0, duration: 30 });
     setImageFile(null);
@@ -373,487 +398,641 @@ const Services: React.FC = () => {
   /* ---------- UI ---------- */
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-72">
-        <div className="flex items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-transparent border-b-teal-500" />
-          <div className="text-slate-600 text-lg">Đang tải…</div>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex justify-center items-center">
+        <div className="flex flex-col items-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+          <p className="text-gray-500 font-medium">Đang tải dữ liệu...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
-      {/* Topbar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-3xl font-bold text-slate-900">Quản lý dịch vụ</h1>
-        <button
-          onClick={() => setIsCreateDialogOpen(true)}
-          className="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-white
-                     bg-gradient-to-r from-teal-500 to-blue-600
-                     hover:from-teal-600 hover:to-blue-700 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Thêm dịch vụ mới
-        </button>
-      </div>
-
-      {/* Search */}
-      <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
-        <div className="flex items-center gap-2">
-          <Search className="h-4 w-4 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Tìm kiếm dịch vụ…"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="max-w-sm px-3 py-2 rounded-xl border border-slate-300
-                       focus:outline-none focus:ring-2 focus:ring-teal-500"
-          />
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <div className="p-8">
+        {/* Modern Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-3">
+                Quản lý dịch vụ
+              </h1>
+              <p className="text-gray-600 text-lg">
+                Quản lý các dịch vụ y tế được cung cấp tại phòng khám
+              </p>
+            </div>
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setIsCreateDialogOpen(true)}
+                className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl hover:from-blue-700 hover:to-indigo-700 transition-all duration-300 ease-out flex items-center gap-2 shadow-lg hover:shadow-xl"
+              >
+                <Plus className="w-5 h-5" />
+                Thêm dịch vụ mới
+              </button>
+            </div>
+          </div>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="mt-6 bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-200">
-          <h3 className="text-lg font-semibold text-slate-900">
-            Danh sách dịch vụ ({filteredServices.length})
-          </h3>
+        {/* Enhanced Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-500 ease-out group">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  Tổng dịch vụ
+                </p>
+                <p className="text-3xl font-bold text-gray-900 mt-2">
+                  {services.length}
+                </p>
+                <div className="flex items-center mt-2">
+                  <TrendingUp className="w-4 h-4 text-green-500 mr-1" />
+                  <span className="text-sm text-green-600 font-medium">
+                    +15% từ tháng trước
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-blue-100 rounded-xl group-hover:bg-blue-200 transition-colors duration-300">
+                <Users className="w-8 h-8 text-blue-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-500 ease-out group">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  Đang hoạt động
+                </p>
+                <p className="text-3xl font-bold text-green-600 mt-2">
+                  {services.filter((s) => s.isActive).length}
+                </p>
+                <div className="flex items-center mt-2">
+                  <CheckCircle className="w-4 h-4 text-green-500 mr-1" />
+                  <span className="text-sm text-green-600 font-medium">
+                    Sẵn sàng phục vụ
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-green-100 rounded-xl group-hover:bg-green-200 transition-colors duration-300">
+                <CheckCircle className="w-8 h-8 text-green-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-500 ease-out group">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  Tạm dừng
+                </p>
+                <p className="text-3xl font-bold text-orange-600 mt-2">
+                  {services.filter((s) => !s.isActive).length}
+                </p>
+                <div className="flex items-center mt-2">
+                  <Clock className="w-4 h-4 text-orange-500 mr-1" />
+                  <span className="text-sm text-orange-600 font-medium">
+                    Cần kiểm tra
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-orange-100 rounded-xl group-hover:bg-orange-200 transition-colors duration-300">
+                <Clock className="w-8 h-8 text-orange-600" />
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-all duration-500 ease-out group">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500 uppercase tracking-wide">
+                  Giá trung bình
+                </p>
+                <p className="text-3xl font-bold text-purple-600 mt-2">
+                  {services.length > 0
+                    ? formatPrice(
+                        services.reduce((sum, s) => sum + s.price, 0) /
+                          services.length
+                      )
+                    : formatPrice(0)}
+                </p>
+                <div className="flex items-center mt-2">
+                  <TrendingUp className="w-4 h-4 text-purple-500 mr-1" />
+                  <span className="text-sm text-purple-600 font-medium">
+                    Cạnh tranh
+                  </span>
+                </div>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-xl group-hover:bg-purple-200 transition-colors duration-300">
+                <TrendingUp className="w-8 h-8 text-purple-600" />
+              </div>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                {[
-                  "Ảnh",
-                  "Tên dịch vụ",
-                  "Mô tả",
-                  "Giá",
-                  "Thời gian",
-                  "Trạng thái",
-                  "Thao tác",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    className="px-6 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wider"
-                  >
-                    {h}
+
+        {/* Enhanced Search */}
+        <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 mb-8">
+          <div className="flex flex-col lg:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input
+                  type="text"
+                  placeholder="Tìm kiếm dịch vụ theo tên hoặc mô tả..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300 ease-out bg-gray-50 focus:bg-white"
+                />
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <select className="px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 focus:bg-white transition-all duration-300 ease-out min-w-[150px]">
+                <option value="">Tất cả trạng thái</option>
+                <option value="active">✅ Đang hoạt động</option>
+                <option value="inactive">⏸️ Tạm dừng</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Modern Services Table */}
+        <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Danh sách dịch vụ ({filteredServices.length})
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Ảnh dịch vụ
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-slate-200">
-              {filteredServices.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan={7}
-                    className="px-6 py-10 text-center text-slate-500"
-                  >
-                    Không tìm thấy dịch vụ nào
-                  </td>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Thông tin dịch vụ
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Giá & Thời gian
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Trạng thái
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Ngày tạo
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider">
+                    Thao tác
+                  </th>
                 </tr>
-              ) : (
-                filteredServices.map((s) => (
-                  <tr key={s._id} className="hover:bg-slate-50">
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {s.imageUrl || s.thumbnailUrl ? (
-                        <img
-                          src={s.thumbnailUrl || s.imageUrl}
-                          alt={s.name}
-                          className="h-12 w-12 rounded-lg object-cover border border-slate-200"
-                        />
-                      ) : (
-                        <div className="h-12 w-12 rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center">
-                          <span className="text-slate-400 text-xs">
-                            Không có ảnh
-                          </span>
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
-                      {s.name}
-                    </td>
-                    <td className="px-6 py-4 text-slate-600 max-w-xs truncate">
-                      {s.description}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap font-semibold text-emerald-600">
-                      {formatPrice(s.price)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-slate-600">
-                      <div className="inline-flex items-center">
-                        <Clock className="h-4 w-4 mr-1" />
-                        {s.duration} phút
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <button
-                        onClick={() => toggleServiceStatus(s._id, s.isActive)}
-                        className={classNames(
-                          "inline-flex px-2 py-1 text-xs font-semibold rounded-full transition-colors",
-                          s.isActive
-                            ? "bg-emerald-100 text-emerald-800 hover:bg-emerald-200"
-                            : "bg-slate-100 text-slate-800 hover:bg-slate-200"
-                        )}
-                      >
-                        {s.isActive ? "Hoạt động" : "Không hoạt động"}
-                      </button>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => handleEdit(s)}
-                          className="text-slate-600 hover:text-slate-800 p-1 hover:bg-slate-100 rounded transition-colors"
-                          aria-label="Sửa"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteService(s._id)}
-                          className="text-rose-600 hover:text-rose-800 p-1 hover:bg-rose-50 rounded transition-colors"
-                          aria-label="Xóa"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredServices.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-12 text-center">
+                      <div className="flex flex-col items-center">
+                        <Users className="w-16 h-16 text-gray-300 mb-4" />
+                        <p className="text-gray-500 font-medium text-lg">
+                          Không có dịch vụ nào
+                        </p>
+                        <p className="text-gray-400 mt-1">
+                          Hãy thêm dịch vụ đầu tiên của bạn
+                        </p>
                       </div>
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  filteredServices.map((s) => (
+                    <tr
+                      key={s._id}
+                      className="hover:bg-gray-50 transition-colors duration-300 ease-out"
+                    >
+                      <td className="px-6 py-4">
+                        <div className="flex items-center">
+                          {s.imageUrl || s.thumbnailUrl ? (
+                            <img
+                              src={s.thumbnailUrl || s.imageUrl}
+                              alt={s.name}
+                              className="h-16 w-16 rounded-xl object-cover border border-gray-200 shadow-sm"
+                            />
+                          ) : (
+                            <div className="h-16 w-16 rounded-xl bg-gradient-to-br from-blue-100 to-purple-100 border border-gray-200 flex items-center justify-center">
+                              <Users className="w-8 h-8 text-gray-400" />
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-start space-x-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {s.name}
+                            </p>
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                              {s.description}
+                            </p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold text-emerald-600">
+                            {formatPrice(s.price)}
+                          </p>
+                          <div className="flex items-center text-sm text-gray-500">
+                            <Clock className="w-4 h-4 mr-1" />
+                            {s.duration} phút
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button
+                          onClick={() => toggleServiceStatus(s._id, s.isActive)}
+                          className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold transition-all duration-300 ease-out ${
+                            s.isActive
+                              ? "bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border border-green-200 hover:from-green-200 hover:to-emerald-200"
+                              : "bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800 border border-gray-200 hover:from-gray-200 hover:to-slate-200"
+                          }`}
+                        >
+                          {s.isActive ? (
+                            <CheckCircle className="w-3.5 h-3.5" />
+                          ) : (
+                            <Clock className="w-3.5 h-3.5" />
+                          )}
+                          {s.isActive ? "Hoạt động" : "Tạm dừng"}
+                        </button>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="text-sm text-gray-500">
+                          {new Date(s.createdAt).toLocaleDateString("vi-VN", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          })}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleEdit(s)}
+                            className="p-2 text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Chỉnh sửa dịch vụ"
+                          >
+                            <Edit className="w-5 h-5" />
+                          </button>
+                          <button
+                            onClick={() => deleteService(s._id)}
+                            className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all"
+                            title="Xóa dịch vụ"
+                          >
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
+
+        {/* Create Modal */}
+        <Modal
+          isOpen={isCreateDialogOpen}
+          onClose={() => setIsCreateDialogOpen(false)}
+          title="Thêm dịch vụ mới"
+          overlayClassName="bg-black/60 backdrop-blur-sm"
+          panelClassName="max-w-xl"
+        >
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-slate-700 mb-1"
+              >
+                Tên dịch vụ
+              </label>
+              <input
+                id="name"
+                type="text"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="Nhập tên dịch vụ"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="description"
+                className="block text-sm font-medium text-slate-700 mb-1"
+              >
+                Mô tả
+              </label>
+              <textarea
+                id="description"
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                placeholder="Nhập mô tả dịch vụ"
+                rows={3}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="price"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  Giá (VND)
+                </label>
+                <input
+                  id="price"
+                  type="number"
+                  min={0}
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: Number(e.target.value) })
+                  }
+                  placeholder="Nhập giá dịch vụ"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="duration"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  Thời gian (phút)
+                </label>
+                <input
+                  id="duration"
+                  type="number"
+                  min={15}
+                  step={15}
+                  value={formData.duration}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      duration: Number(e.target.value),
+                    })
+                  }
+                  placeholder="Nhập thời gian"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Ảnh dịch vụ
+              </label>
+              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
+                <div className="space-y-1 text-center">
+                  {imagePreview ? (
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="mx-auto h-32 w-32 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <svg
+                        className="mx-auto h-12 w-12 text-slate-400"
+                        stroke="currentColor"
+                        fill="none"
+                        viewBox="0 0 48 48"
+                      >
+                        <path
+                          d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <div className="flex text-sm text-slate-600">
+                        <label
+                          htmlFor="service-image"
+                          className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
+                        >
+                          <span>Tải lên ảnh</span>
+                          <input
+                            id="service-image"
+                            name="service-image"
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={handleImageChange}
+                          />
+                        </label>
+                        <p className="pl-1">hoặc kéo thả</p>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        PNG, JPG, GIF tối đa 5MB
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setIsCreateDialogOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={createService}
+                className="px-4 py-2 rounded-xl text-white font-medium bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700"
+              >
+                Tạo dịch vụ
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Edit Modal */}
+        <Modal
+          isOpen={isEditDialogOpen}
+          onClose={() => setIsEditDialogOpen(false)}
+          title="Chỉnh sửa dịch vụ"
+          overlayClassName="bg-black/60 backdrop-blur-sm"
+          panelClassName="max-w-xl"
+        >
+          <div className="space-y-4">
+            <div>
+              <label
+                htmlFor="edit-name"
+                className="block text-sm font-medium text-slate-700 mb-1"
+              >
+                Tên dịch vụ
+              </label>
+              <input
+                id="edit-name"
+                type="text"
+                value={formData.name}
+                onChange={(e) =>
+                  setFormData({ ...formData, name: e.target.value })
+                }
+                placeholder="Nhập tên dịch vụ"
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div>
+              <label
+                htmlFor="edit-description"
+                className="block text-sm font-medium text-slate-700 mb-1"
+              >
+                Mô tả
+              </label>
+              <textarea
+                id="edit-description"
+                value={formData.description}
+                onChange={(e) =>
+                  setFormData({ ...formData, description: e.target.value })
+                }
+                placeholder="Nhập mô tả dịch vụ"
+                rows={3}
+                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label
+                  htmlFor="edit-price"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  Giá (VND)
+                </label>
+                <input
+                  id="edit-price"
+                  type="number"
+                  min={0}
+                  value={formData.price}
+                  onChange={(e) =>
+                    setFormData({ ...formData, price: Number(e.target.value) })
+                  }
+                  placeholder="Nhập giá dịch vụ"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="edit-duration"
+                  className="block text-sm font-medium text-slate-700 mb-1"
+                >
+                  Thời gian (phút)
+                </label>
+                <input
+                  id="edit-duration"
+                  type="number"
+                  min={15}
+                  step={15}
+                  value={formData.duration}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      duration: Number(e.target.value),
+                    })
+                  }
+                  placeholder="Nhập thời gian"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">
+                Ảnh dịch vụ
+              </label>
+              <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
+                <div className="space-y-1 text-center">
+                  {imagePreview ? (
+                    <div className="relative">
+                      <img
+                        src={imagePreview}
+                        alt="Preview"
+                        className="mx-auto h-32 w-32 object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={removeImage}
+                        className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <svg
+                        className="mx-auto h-12 w-12 text-slate-400"
+                        stroke="currentColor"
+                        fill="none"
+                        viewBox="0 0 48 48"
+                      >
+                        <path
+                          d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
+                          strokeWidth={2}
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                      <div className="flex text-sm text-slate-600">
+                        <label
+                          htmlFor="edit-service-image"
+                          className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
+                        >
+                          <span>Tải lên ảnh</span>
+                          <input
+                            id="edit-service-image"
+                            name="edit-service-image"
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            onChange={handleImageChange}
+                          />
+                        </label>
+                        <p className="pl-1">hoặc kéo thả</p>
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        PNG, JPG, GIF tối đa 5MB
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setIsEditDialogOpen(false)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={updateService}
+                className="px-4 py-2 rounded-xl text-white font-medium bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700"
+              >
+                Cập nhật
+              </button>
+            </div>
+          </div>
+        </Modal>
+
+        {/* Toasts */}
+        <Toasts toasts={toasts} remove={remove} />
       </div>
-
-      {/* Create Modal */}
-      <Modal
-        isOpen={isCreateDialogOpen}
-        onClose={() => setIsCreateDialogOpen(false)}
-        title="Thêm dịch vụ mới"
-        overlayClassName="bg-black/60 backdrop-blur-sm"
-        panelClassName="max-w-xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium text-slate-700 mb-1"
-            >
-              Tên dịch vụ
-            </label>
-            <input
-              id="name"
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              placeholder="Nhập tên dịch vụ"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-slate-700 mb-1"
-            >
-              Mô tả
-            </label>
-            <textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              placeholder="Nhập mô tả dịch vụ"
-              rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="price"
-                className="block text-sm font-medium text-slate-700 mb-1"
-              >
-                Giá (VND)
-              </label>
-              <input
-                id="price"
-                type="number"
-                min={0}
-                value={formData.price}
-                onChange={(e) =>
-                  setFormData({ ...formData, price: Number(e.target.value) })
-                }
-                placeholder="Nhập giá dịch vụ"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="duration"
-                className="block text-sm font-medium text-slate-700 mb-1"
-              >
-                Thời gian (phút)
-              </label>
-              <input
-                id="duration"
-                type="number"
-                min={15}
-                step={15}
-                value={formData.duration}
-                onChange={(e) =>
-                  setFormData({ ...formData, duration: Number(e.target.value) })
-                }
-                placeholder="Nhập thời gian"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Ảnh dịch vụ
-            </label>
-            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
-              <div className="space-y-1 text-center">
-                {imagePreview ? (
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="mx-auto h-32 w-32 object-cover rounded-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <svg
-                      className="mx-auto h-12 w-12 text-slate-400"
-                      stroke="currentColor"
-                      fill="none"
-                      viewBox="0 0 48 48"
-                    >
-                      <path
-                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <div className="flex text-sm text-slate-600">
-                      <label
-                        htmlFor="service-image"
-                        className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
-                      >
-                        <span>Tải lên ảnh</span>
-                        <input
-                          id="service-image"
-                          name="service-image"
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          onChange={handleImageChange}
-                        />
-                      </label>
-                      <p className="pl-1">hoặc kéo thả</p>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      PNG, JPG, GIF tối đa 5MB
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setIsCreateDialogOpen(false)}
-              className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50"
-            >
-              Hủy
-            </button>
-            <button
-              onClick={createService}
-              className="px-4 py-2 rounded-xl text-white font-medium bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700"
-            >
-              Tạo dịch vụ
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Edit Modal */}
-      <Modal
-        isOpen={isEditDialogOpen}
-        onClose={() => setIsEditDialogOpen(false)}
-        title="Chỉnh sửa dịch vụ"
-        overlayClassName="bg-black/60 backdrop-blur-sm"
-        panelClassName="max-w-xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <label
-              htmlFor="edit-name"
-              className="block text-sm font-medium text-slate-700 mb-1"
-            >
-              Tên dịch vụ
-            </label>
-            <input
-              id="edit-name"
-              type="text"
-              value={formData.name}
-              onChange={(e) =>
-                setFormData({ ...formData, name: e.target.value })
-              }
-              placeholder="Nhập tên dịch vụ"
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-          <div>
-            <label
-              htmlFor="edit-description"
-              className="block text-sm font-medium text-slate-700 mb-1"
-            >
-              Mô tả
-            </label>
-            <textarea
-              id="edit-description"
-              value={formData.description}
-              onChange={(e) =>
-                setFormData({ ...formData, description: e.target.value })
-              }
-              placeholder="Nhập mô tả dịch vụ"
-              rows={3}
-              className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label
-                htmlFor="edit-price"
-                className="block text-sm font-medium text-slate-700 mb-1"
-              >
-                Giá (VND)
-              </label>
-              <input
-                id="edit-price"
-                type="number"
-                min={0}
-                value={formData.price}
-                onChange={(e) =>
-                  setFormData({ ...formData, price: Number(e.target.value) })
-                }
-                placeholder="Nhập giá dịch vụ"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-            <div>
-              <label
-                htmlFor="edit-duration"
-                className="block text-sm font-medium text-slate-700 mb-1"
-              >
-                Thời gian (phút)
-              </label>
-              <input
-                id="edit-duration"
-                type="number"
-                min={15}
-                step={15}
-                value={formData.duration}
-                onChange={(e) =>
-                  setFormData({ ...formData, duration: Number(e.target.value) })
-                }
-                placeholder="Nhập thời gian"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">
-              Ảnh dịch vụ
-            </label>
-            <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-slate-300 border-dashed rounded-xl hover:border-slate-400 transition-colors">
-              <div className="space-y-1 text-center">
-                {imagePreview ? (
-                  <div className="relative">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="mx-auto h-32 w-32 object-cover rounded-lg"
-                    />
-                    <button
-                      type="button"
-                      onClick={removeImage}
-                      className="absolute -top-2 -right-2 bg-rose-500 text-white rounded-full p-1 hover:bg-rose-600 transition-colors"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    <svg
-                      className="mx-auto h-12 w-12 text-slate-400"
-                      stroke="currentColor"
-                      fill="none"
-                      viewBox="0 0 48 48"
-                    >
-                      <path
-                        d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02"
-                        strokeWidth={2}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                    <div className="flex text-sm text-slate-600">
-                      <label
-                        htmlFor="edit-service-image"
-                        className="relative cursor-pointer rounded-md font-medium text-teal-600 hover:text-teal-500 focus-within:outline-none focus-within:ring-2 focus-within:ring-offset-2 focus-within:ring-teal-500"
-                      >
-                        <span>Tải lên ảnh</span>
-                        <input
-                          id="edit-service-image"
-                          name="edit-service-image"
-                          type="file"
-                          accept="image/*"
-                          className="sr-only"
-                          onChange={handleImageChange}
-                        />
-                      </label>
-                      <p className="pl-1">hoặc kéo thả</p>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      PNG, JPG, GIF tối đa 5MB
-                    </p>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <button
-              onClick={() => setIsEditDialogOpen(false)}
-              className="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-50"
-            >
-              Hủy
-            </button>
-            <button
-              onClick={updateService}
-              className="px-4 py-2 rounded-xl text-white font-medium bg-gradient-to-r from-teal-500 to-blue-600 hover:from-teal-600 hover:to-blue-700"
-            >
-              Cập nhật
-            </button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Toasts */}
-      <Toasts toasts={toasts} remove={remove} />
     </div>
   );
 };

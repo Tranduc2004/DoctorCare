@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { Eye, EyeOff, Lock, Mail, Loader2 } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../../contexts/AuthContext";
 
 type Creds = { email: string; password: string; remember: boolean };
 
 export default function PharmacyLogin() {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [showPw, setShowPw] = useState(false);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string>("");
@@ -32,12 +34,37 @@ export default function PharmacyLogin() {
     setErr("");
     setLoading(true);
     try {
-      // TODO: gọi API login thật ở đây
-      // const res = await fetch("/api/pharmacy/auth/login", { ... });
-      // const data = await res.json(); localStorage.setItem("token", data.token);
+      const response = await fetch("http://localhost:5001/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: form.email,
+          password: form.password,
+        }),
+      });
 
-      await new Promise((r) => setTimeout(r, 800)); // demo
-      navigate("/pharmacy"); // điều hướng vào dashboard sau khi đăng nhập
+      const data = await response.json();
+
+      if (!response.ok) {
+        // Common cases
+        if (response.status === 401) {
+          // backend should provide message like 'Email hoặc mật khẩu không đúng' or 'Tài khoản đã bị vô hiệu hóa'
+          setErr(data.message || "Email hoặc mật khẩu không đúng");
+        } else if (response.status >= 500) {
+          setErr("Lỗi máy chủ. Vui lòng thử lại sau.");
+        } else {
+          setErr(data.message || "Đăng nhập thất bại");
+        }
+        return;
+      }
+
+      // Use AuthContext to login (respect remember checkbox)
+      login(data.token, data.user, form.remember);
+
+      // Redirect to dashboard
+      navigate("/");
     } catch (e: unknown) {
       if (e instanceof Error) {
         setErr(e.message || "Đăng nhập thất bại. Vui lòng thử lại.");

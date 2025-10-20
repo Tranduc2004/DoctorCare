@@ -67,7 +67,6 @@ export const adminLogin: RequestHandler = async (
       token,
     });
   } catch (error) {
-    console.error("Admin login error:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi server",
@@ -98,7 +97,6 @@ export const getAdminProfile: RequestHandler = async (
       admin,
     });
   } catch (error) {
-    console.error("Get admin profile error:", error);
     res.status(500).json({
       success: false,
       message: "Lỗi server",

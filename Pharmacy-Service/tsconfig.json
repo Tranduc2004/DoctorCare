@@ -21,7 +21,12 @@
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
     "resolveJsonModule": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@medicare/shared": ["../shared/src"],
+      "@medicare/shared/*": ["../shared/src/*"],
+      "*": ["node_modules/*"]
+    }
   },
   "exclude": ["node_modules"],
   "include": ["./src/**/*.ts"]

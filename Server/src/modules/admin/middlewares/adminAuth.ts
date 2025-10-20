@@ -40,9 +40,23 @@ export const verifyAdminToken: RequestHandler = (
     }
 
     // Gắn thông tin vào request
+    (req as any).admin = {
+      id: decoded.adminId,
+      username: decoded.username,
+      role: decoded.role,
+    };
     (req as any).adminId = decoded.adminId;
     (req as any).adminUsername = decoded.username;
     (req as any).adminRole = decoded.role;
+
+    // Also set user for compatibility
+    (req as any).user = {
+      id: decoded.adminId,
+      userId: decoded.adminId,
+      name: decoded.username,
+      username: decoded.username,
+      role: decoded.role,
+    };
 
     next();
   } catch (error) {

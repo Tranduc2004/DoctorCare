@@ -1,13 +1,5 @@
 import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useAuth } from "../../contexts/AuthContext";
 import {
-  LayoutGrid,
-  Package,
-  ShoppingBag,
-  Users,
-  BarChart3,
-  Settings,
   Search,
   Plus,
   Filter,
@@ -17,90 +9,13 @@ import {
   CheckCircle2,
   Clock3,
   X,
-  LogOut,
+  ShoppingBag,
+  Users,
 } from "lucide-react";
 
-export default function PharmacyAdminDashboard() {
+export default function PharmacyHomePage() {
   return (
-    <div className=" bg-gradient-to-br from-white via-[#EAF9F6] to-white text-slate-900">
-      <div className=" grid grid-cols-1 md:grid-cols-[240px_1fr]">
-        <Sidebar />
-        <Main />
-      </div>
-    </div>
-  );
-}
-
-/* ================= Sidebar ================= */
-function Sidebar() {
-  const navigate = useNavigate();
-  const { logout } = useAuth();
-
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
-  const items = [
-    {
-      icon: <LayoutGrid className="h-5 w-5" />,
-      label: "Tổng quan",
-      active: true,
-    },
-    { icon: <Package className="h-5 w-5" />, label: "Sản phẩm" },
-    { icon: <ShoppingBag className="h-5 w-5" />, label: "Đơn hàng" },
-    { icon: <Users className="h-5 w-5" />, label: "Khách hàng" },
-    { icon: <BarChart3 className="h-5 w-5" />, label: "Báo cáo" },
-    { icon: <Settings className="h-5 w-5" />, label: "Cài đặt" },
-  ];
-  return (
-    <aside className="hidden md:block sticky top-0 h-screen border-r border-teal-100 bg-white/70 backdrop-blur">
-      <div className="px-5 py-4 border-b border-teal-100">
-        <div className="text-xl font-extrabold tracking-tight">
-          Medi<span className="text-teal-600">Care</span>{" "}
-          <span className="text-slate-700">Pharmacy</span>
-        </div>
-        <div className="mt-1 text-xs text-slate-500">
-          Bảng điều khiển nhà thuốc
-        </div>
-      </div>
-      <nav className="p-3 space-y-1">
-        {items.map((it, i) => (
-          <button
-            key={i}
-            className={`w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition ${
-              it.active
-                ? "bg-teal-600 text-white"
-                : "text-slate-700 hover:bg-teal-50"
-            }`}
-          >
-            {it.icon}
-            {it.label}
-          </button>
-        ))}
-
-        {/* Logout button */}
-        <button
-          onClick={handleLogout}
-          className="w-full flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition text-red-600 hover:bg-red-50"
-        >
-          <LogOut className="h-5 w-5" />
-          Đăng xuất
-        </button>
-      </nav>
-      <div className="mt-4 px-3">
-        <div className="rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-800">
-          💡 Mẹo: Cập nhật tồn kho mỗi ngày để tránh thiếu hàng.
-        </div>
-      </div>
-    </aside>
-  );
-}
-
-/* ================= Main ================= */
-function Main() {
-  return (
-    <main className="min-h-screen">
+    <>
       <Topbar />
       <div className="px-4 md:px-6 pb-10">
         <Kpis />
@@ -114,7 +29,7 @@ function Main() {
           <AddProductCard />
         </div>
       </div>
-    </main>
+    </>
   );
 }
 

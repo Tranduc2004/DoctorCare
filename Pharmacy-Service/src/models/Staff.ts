@@ -7,6 +7,10 @@ export interface IStaff extends Document {
   password: string;
   role: "admin" | "staff";
   active: boolean;
+  status: "pending" | "approved" | "rejected";
+  approvedBy?: mongoose.Types.ObjectId;
+  approvedAt?: Date;
+  rejectedReason?: string;
   comparePassword(candidatePassword: string): Promise<boolean>;
 }
 
@@ -40,6 +44,21 @@ const StaffSchema = new Schema(
     active: {
       type: Boolean,
       default: true,
+    },
+    status: {
+      type: String,
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
+    approvedBy: {
+      type: Schema.Types.ObjectId,
+      ref: "Admin",
+    },
+    approvedAt: {
+      type: Date,
+    },
+    rejectedReason: {
+      type: String,
     },
   },
   {

@@ -1,0 +1,28 @@
+{
+  "name": "@medicare/shared",
+  "version": "1.0.0",
+  "description": "Shared domain models and logic for MediCare system",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rimraf dist"
+  },
+  "keywords": [
+    "medicare",
+    "shared",
+    "domain"
+  ],
+  "author": "MediCare Team",
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.0.0",
+    "rimraf": "^5.0.0"
+  },
+  "dependencies": {
+    "mongoose": "^8.0.0",
+    "bcryptjs": "^2.4.3",
+    "@types/bcryptjs": "^2.4.6"
+  }
+}

@@ -4,7 +4,12 @@ require("dotenv").config();
 const initData = async () => {
   try {
     // Kết nối MongoDB
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 30000,
+      socketTimeoutMS: 45000,
+      bufferMaxEntries: 0,
+      bufferCommands: false,
+    });
     console.log("Kết nối MongoDB thành công!");
 
     // Import models

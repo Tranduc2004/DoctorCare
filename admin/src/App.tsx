@@ -20,6 +20,9 @@ import InsuranceVerification from "./pages/insurance/InsuranceVerification";
 import MedicalRecordsPage from "./pages/medical-records/MedicalRecordsPage";
 import BankAccountsPage from "./pages/bank-accounts/BankAccounts";
 import PaymentsPage from "./pages/Payments/PaymentsPage";
+import PharmacyStaff from "./pages/Pharmacy/PharmacyStaff";
+import CategoriesPage from "./pages/Categories/CategoriesPage";
+import Medicines from "./pages/Pharmacy/Medicines";
 import "./App.css";
 
 // Protected Route Component
@@ -184,6 +187,36 @@ function App() {
                 <ProtectedRoute>
                   <AdminLayout>
                     <MedicalRecordsPage />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pharmacy-staff"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <PharmacyStaff />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pharmacy/medicines"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <Medicines />
+                  </AdminLayout>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/pharmacy/categories"
+              element={
+                <ProtectedRoute>
+                  <AdminLayout>
+                    <CategoriesPage />
                   </AdminLayout>
                 </ProtectedRoute>
               }

@@ -16,11 +16,13 @@ console.log("EMAIL_PASS configured:", !!process.env.EMAIL_PASS);
 
 import { initSocket } from "./utils/socket";
 import { startExpiredInvoiceMonitor } from "./utils/markExpiredInvoices";
+import { connectMongo, isConnected } from "./db/mongo";
 
 // Import modules
 import adminRoutes from "./modules/admin/routes";
 import patientRoutes from "./modules/patient/routes";
 import doctorRoutes from "./modules/doctor/routes";
+import pharmacyRoutes from "./modules/pharmacy/routes";
 import {
   specialtyRoutes,
   serviceRoutes,
@@ -51,6 +53,18 @@ app.use(express.urlencoded({ extended: true }));
 // Serve static files from uploads directory
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
+// Database connection check middleware
+app.use((req, res, next) => {
+  if (!isConnected()) {
+    return res.status(503).json({
+      success: false,
+      error: "DB_NOT_CONNECTED",
+      message: "Database connection not available",
+    });
+  }
+  next();
+});
+
 // Routes - Mỗi module có auth riêng
 app.use("/api/admin", adminRoutes);
 app.use("/api/patient", patientRoutes);
@@ -58,6 +72,7 @@ app.use("/api/patient", patientRoutes);
 // with external services configured to call /patient/... (e.g., PayOS webhook)
 app.use("/patient", patientRoutes);
 app.use("/api/doctor", doctorRoutes);
+app.use("/api/pharmacy", pharmacyRoutes);
 
 // Shared routes (công khai)
 app.use("/api/specialties", specialtyRoutes);
@@ -71,7 +86,11 @@ app.use("/api/pricing", pricingRoutes);
 
 // Health check
 app.get("/health", (req, res) => {
-  res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
+  res.status(200).json({
+    status: "OK",
+    timestamp: new Date().toISOString(),
+    dbConnected: isConnected(),
+  });
 });
 
 // Error handling middleware
@@ -92,11 +111,10 @@ app.use("*", (req, res) => {
   res.status(404).json({ error: "Route not found" });
 });
 
-mongoose
-  .connect(process.env.MONGODB_URI as string)
-  .then(async () => {
-    console.log("MONGODB_URI:", process.env.MONGODB_URI);
-    console.log("Kết nối MongoDB thành công!");
+// Connect to MongoDB and start server
+async function startServer() {
+  try {
+    await connectMongo();
 
     server.listen(PORT, () => {
       console.log(`Server đang chạy tại http://localhost:${PORT}`);
@@ -123,5 +141,10 @@ mongoose
 
     // Kiểm tra mailer (không chặn server nếu lỗi)
     verifyEmailTransport().catch(() => {});
-  })
-  .catch((err: any) => console.error("Lỗi kết nối MongoDB:", err));
+  } catch (err: any) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
+}
+
+startServer();

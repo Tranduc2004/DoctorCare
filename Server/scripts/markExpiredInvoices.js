@@ -12,7 +12,7 @@ const mongoose = require("mongoose");
 const { URL } = require("url");
 
 const argv = process.argv.slice(2);
-let mongoUri = process.env.MONGO_URI || null;
+let mongoUri = process.env.MONGODB_URI || null;
 let dry = false;
 for (let i = 0; i < argv.length; i++) {
   if (argv[i] === "--mongo" && argv[i + 1]) {
@@ -23,7 +23,7 @@ for (let i = 0; i < argv.length; i++) {
 }
 if (!mongoUri) {
   console.error(
-    "Mongo URI not provided. Use --mongo or set MONGO_URI env var."
+    "Mongo URI not provided. Use --mongo or set MONGODB_URI env var."
   );
   process.exit(1);
 }

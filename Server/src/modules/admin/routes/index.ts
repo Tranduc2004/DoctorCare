@@ -10,6 +10,9 @@ import insuranceRoutes from "./insuranceRoutes";
 import medicalRecordRoutes from "./medicalRecordRoutes";
 import bankAccountRoutes from "./bankAccountRoutes";
 import paymentAdminRoutes from "./paymentAdminRoutes";
+import pharmacyRoutes from "../../pharmacy/routes/staffRoutes";
+import categoryRoutes from "./categoryRoutes";
+import medicineRoutes from "./medicineRoutes";
 
 const router = Router();
 
@@ -24,5 +27,8 @@ router.use("/insurance", insuranceRoutes);
 router.use("/medical-records", medicalRecordRoutes);
 router.use("/bank-accounts", bankAccountRoutes);
 router.use("/payments", paymentAdminRoutes);
+router.use("/pharmacy", pharmacyRoutes);
+router.use("/categories", categoryRoutes);
+router.use("/medicines", medicineRoutes);
 
 export default router;

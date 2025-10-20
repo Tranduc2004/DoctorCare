@@ -27,10 +27,12 @@
 
     /* Modules */
     "module": "commonjs" /* Specify what module code is generated. */,
-    "rootDir": "./src",
+    "rootDirs": ["./src", "../shared/src"],
     "moduleResolution": "node",
     "baseUrl": ".",
     "paths": {
+      "@medicare/shared": ["../shared/src"],
+      "@medicare/shared/*": ["../shared/src/*"],
       "*": ["node_modules/*"]
     },
     "typeRoots": ["./src/types", "./node_modules/@types"],

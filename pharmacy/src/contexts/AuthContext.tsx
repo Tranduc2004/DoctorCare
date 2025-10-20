@@ -1,11 +1,21 @@
 /* eslint-disable react-refresh/only-export-components */
 import React, { createContext, useContext, useState, useEffect } from "react";
 
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  pharmacyId?: string;
+}
+
 interface AuthContextType {
   isAuthenticated: boolean;
   token: string | null;
+  user: User | null;
   loading: boolean;
-  login: (token: string) => void;
+  // remember: if true store in localStorage, otherwise sessionStorage
+  login: (token: string, user: User, remember?: boolean) => void;
   logout: () => void;
 }
 
@@ -14,55 +24,77 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [token, setToken] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is logged in on component mount
     const checkAuth = async () => {
-      const storedToken = localStorage.getItem("pharmacy_token");
-      if (storedToken) {
-        try {
-          // Verify token with backend
-          const response = await fetch(
-            "http://localhost:5001/api/auth/verify",
-            {
-              headers: {
-                Authorization: `Bearer ${storedToken}`,
-              },
-            }
-          );
+      const storedToken =
+        localStorage.getItem("pharmacy_token") ||
+        sessionStorage.getItem("pharmacy_token");
 
-          if (response.ok) {
-            setToken(storedToken);
-            setIsAuthenticated(true);
-          } else {
-            // If token is invalid, clear it
-            localStorage.removeItem("pharmacy_token");
-          }
-        } catch (error) {
-          console.error("Auth verification failed:", error);
-        }
+      if (!storedToken) {
+        setLoading(false);
+        return;
       }
-      setLoading(false);
+
+      try {
+        const response = await fetch("http://localhost:5001/api/auth/verify", {
+          headers: {
+            Authorization: `Bearer ${storedToken}`,
+          },
+        });
+
+        if (response.ok) {
+          const userData = await response.json();
+          setToken(storedToken);
+          setUser(userData.user);
+          setIsAuthenticated(true);
+        } else {
+          localStorage.removeItem("pharmacy_token");
+          sessionStorage.removeItem("pharmacy_token");
+        }
+      } catch (err) {
+        console.error("Auth verification failed:", err);
+      } finally {
+        setLoading(false);
+      }
     };
 
     checkAuth();
   }, []);
 
-  const login = (token: string) => {
-    localStorage.setItem("pharmacy_token", token);
-    setToken(token);
+  const login = (tokenValue: string, userData: User, remember = true) => {
+    try {
+      if (remember) {
+        localStorage.setItem("pharmacy_token", tokenValue);
+        sessionStorage.removeItem("pharmacy_token");
+      } else {
+        sessionStorage.setItem("pharmacy_token", tokenValue);
+        localStorage.removeItem("pharmacy_token");
+      }
+    } catch (e) {
+      console.warn("Failed to persist token to storage", e);
+    }
+
+    setToken(tokenValue);
+    setUser(userData);
     setIsAuthenticated(true);
   };
 
   const logout = () => {
-    localStorage.removeItem("pharmacy_token");
+    try {
+      localStorage.removeItem("pharmacy_token");
+      sessionStorage.removeItem("pharmacy_token");
+    } catch {
+      /* ignore */
+    }
     setToken(null);
+    setUser(null);
     setIsAuthenticated(false);
   };
 
   if (loading) {
-    // You can create a loading component or return null
     return (
       <div className="min-h-screen grid place-items-center bg-slate-50">
         <div className="text-center">
@@ -75,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ isAuthenticated, token, loading, login, logout }}
+      value={{ isAuthenticated, token, user, loading, login, logout }}
     >
       {children}
     </AuthContext.Provider>

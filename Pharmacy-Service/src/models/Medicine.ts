@@ -1,38 +1,23 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose from "mongoose";
+import {
+  getMedicineModel,
+  getMedicineBatchModel,
+  getStockTransactionModel,
+  getMedicineStockModel,
+} from "@medicare/shared";
 
-export interface IMedicine extends Document {
-  name: string;
-  genericName: string;
-  category: string;
-  manufacturer: string;
-  unit: string;
-  unitPrice: number;
-  stock: number;
-  minimumStock: number;
-  expiryDate: Date;
-  batchNumber: string;
-  location: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-const MedicineSchema = new Schema(
-  {
-    name: { type: String, required: true },
-    genericName: { type: String, required: true },
-    category: { type: String, required: true },
-    manufacturer: { type: String, required: true },
-    unit: { type: String, required: true },
-    unitPrice: { type: Number, required: true },
-    stock: { type: Number, required: true, default: 0 },
-    minimumStock: { type: Number, required: true, default: 10 },
-    expiryDate: { type: Date, required: true },
-    batchNumber: { type: String, required: true },
-    location: { type: String, required: true },
-  },
-  {
-    timestamps: true,
-  }
+// Tạo models từ connection của pharmacy server này
+export const MedicineModel = getMedicineModel(mongoose.connection);
+export const MedicineBatchModel = getMedicineBatchModel(mongoose.connection);
+export const StockTransactionModel = getStockTransactionModel(
+  mongoose.connection
 );
+export const MedicineStockModel = getMedicineStockModel(mongoose.connection);
 
-export default mongoose.model<IMedicine>("Medicine", MedicineSchema);
+// Export types để sử dụng trong controller
+export type {
+  IMedicine,
+  IMedicineBatch,
+  IStockTransaction,
+  IMedicineStock,
+} from "@medicare/shared";
